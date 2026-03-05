@@ -29,8 +29,23 @@ const App = (() => {
   const SETTINGS_KEY = 'browseragent_settings';
   const SESSION_CFG_PREFIX = 'browseragent_session_cfg_';
 
-  // Keys that are per-session (behavior/model config)
-  const SESSION_KEYS = ['model', 'enableSearch', 'enableThinking', 'thinkingBudget', 'includeThoughts', 'soulUrl', 'notionToken', 'corsProxy', 'storageBackend', 'actionUseStorage', 'actionBranch', 'actionWorkflow', 'actionArtifactDir'];
+  // Keys that are per-session (each session stores its own independent copy)
+  const SESSION_KEYS = ['apiKey', 'model', 'enableSearch', 'enableThinking', 'thinkingBudget', 'includeThoughts', 'soulUrl', 'notionToken', 'corsProxy', 'storageBackend', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionUseStorage', 'actionBranch', 'actionWorkflow', 'actionArtifactDir', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail'];
+
+  // Credential-type keys where empty string should be treated as "not set"
+  // so the ?? / fallback logic can reach the next level (global settings).
+  const CREDENTIAL_KEYS = new Set(['apiKey', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail', 'notionToken']);
+
+  /**
+   * Read a value from a config object with fallback, treating empty strings
+   * as "not set" for credential-type keys.
+   */
+  function cfgGet(cfg, key, fallback) {
+    const val = cfg[key];
+    if (val == null) return fallback;
+    if (val === '' && CREDENTIAL_KEYS.has(key)) return fallback;
+    return val;
+  }
 
   // Built-in SOUL files — loaded dynamically from examples/souls/index.json
   let BUILTIN_SOULS = [];
@@ -117,7 +132,12 @@ const App = (() => {
   function getSessionSetting(key, fallback = '') {
     if (!currentSessionId) return getSetting(key, fallback);
     const cfg = getSessionConfig(currentSessionId);
-    return cfg[key] ?? getSetting(key, fallback);
+    const val = cfg[key];
+    // For credential keys, treat empty string as "not set" so we fall through to global
+    if (val == null || (val === '' && CREDENTIAL_KEYS.has(key))) {
+      return getSetting(key, fallback);
+    }
+    return val;
   }
 
   function setSessionSetting(key, value) {
@@ -438,18 +458,34 @@ const App = (() => {
     try {
       if (backend === 'github') {
         const config = {
-          token: getSetting('githubToken'),
-          owner: getSetting('githubOwner'),
-          repo: getSetting('githubRepo'),
-          path: getSetting('githubPath', 'sessions'),
+          token: getSessionSetting('githubToken'),
+          owner: getSessionSetting('githubOwner'),
+          repo: getSessionSetting('githubRepo'),
+          path: getSessionSetting('githubPath', 'sessions'),
         };
+        if (!config.token || !config.owner || !config.repo) {
+          // Credentials incomplete — fall back to local save so data is not lost
+          console.warn('[Save] GitHub credentials incomplete, falling back to local. session=', currentSessionId,
+            'token?', !!config.token, 'owner?', !!config.owner, 'repo?', !!config.repo);
+          await Storage.Local.save(data, passphrase);
+          showToast('GitHub credentials missing — saved locally. Open session settings to fix.', 'warn');
+          showSaveIndicator();
+          return;
+        }
         await Storage.GitHub.save(data, passphrase, config);
       } else if (backend === 'notion') {
         const config = {
-          token: getSetting('notionToken'),
-          parentPageId: getSetting('notionParentPageId'),
-          corsProxy: getSetting('corsProxy'),
+          token: getSessionSetting('notionStorageToken'),
+          parentPageId: getSessionSetting('notionParentPageId'),
+          corsProxy: getSessionSetting('corsProxy'),
         };
+        if (!config.token || !config.parentPageId) {
+          console.warn('[Save] Notion credentials incomplete, falling back to local. session=', currentSessionId);
+          await Storage.Local.save(data, passphrase);
+          showToast('Notion credentials missing — saved locally. Open session settings to fix.', 'warn');
+          showSaveIndicator();
+          return;
+        }
         await Storage.Notion.save(data, passphrase, config);
       } else {
         await Storage.Local.save(data, passphrase);
@@ -466,7 +502,9 @@ const App = (() => {
 
   async function loadSession(sessionId) {
     const entry = Storage.getIndex().find((s) => s.id === sessionId);
-    const backend = entry?.backend || getSetting('storageBackend', 'local');
+    const loadCfg = getSessionConfig(sessionId);
+    const loadGet = (key, fb) => cfgGet(loadCfg, key, getSetting(key, fb));
+    const backend = entry?.backend || loadGet('storageBackend', 'local');
 
     // Always prompt passphrase via dialog for loading
     const pass = await promptPassphrase('Enter the passphrase to decrypt this session:');
@@ -476,17 +514,17 @@ const App = (() => {
       let data;
       if (backend === 'github') {
         const config = {
-          token: getSetting('githubToken'),
-          owner: getSetting('githubOwner'),
-          repo: getSetting('githubRepo'),
-          path: getSetting('githubPath', 'sessions'),
+          token: loadGet('githubToken', ''),
+          owner: loadGet('githubOwner', ''),
+          repo: loadGet('githubRepo', ''),
+          path: loadGet('githubPath', 'sessions'),
         };
         data = await Storage.GitHub.load(sessionId, pass, config);
       } else if (backend === 'notion') {
         const config = {
-          token: getSetting('notionToken'),
-          parentPageId: getSetting('notionParentPageId'),
-          corsProxy: getSetting('corsProxy'),
+          token: loadGet('notionStorageToken', ''),
+          parentPageId: loadGet('notionParentPageId', ''),
+          corsProxy: loadGet('corsProxy', ''),
         };
         data = await Storage.Notion.load(sessionId, pass, config);
       } else {
@@ -616,18 +654,20 @@ const App = (() => {
         if (!confirm('Delete this session?')) return;
         try {
           const backend = entry.backend || 'local';
+          const delCfg = getSessionConfig(entry.id);
+          const delGet = (key, fb) => cfgGet(delCfg, key, getSetting(key, fb));
           if (backend === 'github') {
             await Storage.GitHub.remove(entry.id, {
-              token: getSetting('githubToken'),
-              owner: getSetting('githubOwner'),
-              repo: getSetting('githubRepo'),
-              path: getSetting('githubPath', 'sessions'),
+              token: delGet('githubToken', ''),
+              owner: delGet('githubOwner', ''),
+              repo: delGet('githubRepo', ''),
+              path: delGet('githubPath', 'sessions'),
             });
           } else if (backend === 'notion') {
             await Storage.Notion.remove(entry.id, {
-              token: getSetting('notionToken'),
-              parentPageId: getSetting('notionParentPageId'),
-              corsProxy: getSetting('corsProxy'),
+              token: delGet('notionStorageToken', ''),
+              parentPageId: delGet('notionParentPageId', ''),
+              corsProxy: delGet('corsProxy', ''),
             });
           } else {
             await Storage.Local.remove(entry.id);
@@ -885,6 +925,11 @@ const App = (() => {
       const clearSessionId = currentSessionId;
       const entry = Storage.getIndex().find(s => s.id === clearSessionId);
 
+      // Read config BEFORE resetting currentSessionId
+      const clearCfg = getSessionConfig(clearSessionId);
+      const clearGet = (key, fb) => cfgGet(clearCfg, key, getSetting(key, fb));
+      const clearBackend = entry?.backend || clearGet('storageBackend', 'local');
+
       // Reset to no-session state immediately
       Chat.clearHistory();
       Chat.resetTokenUsage();
@@ -897,21 +942,21 @@ const App = (() => {
 
       // Delete from storage in the background
       if (entry) {
-        const backend = entry.backend || getSessionSetting('storageBackend', 'local');
+        const backend = clearBackend;
         (async () => {
           try {
             if (backend === 'github') {
               await Storage.GitHub.remove(clearSessionId, {
-                token: getSetting('githubToken'),
-                owner: getSetting('githubOwner'),
-                repo: getSetting('githubRepo'),
-                path: getSetting('githubPath', 'sessions'),
+                token: clearGet('githubToken', ''),
+                owner: clearGet('githubOwner', ''),
+                repo: clearGet('githubRepo', ''),
+                path: clearGet('githubPath', 'sessions'),
               });
             } else if (backend === 'notion') {
               await Storage.Notion.remove(clearSessionId, {
-                token: getSetting('notionToken'),
-                parentPageId: getSetting('notionParentPageId'),
-                corsProxy: getSetting('corsProxy'),
+                token: clearGet('notionStorageToken', ''),
+                parentPageId: clearGet('notionParentPageId', ''),
+                corsProxy: clearGet('corsProxy', ''),
               });
             } else {
               await Storage.Local.remove(clearSessionId);
@@ -931,10 +976,14 @@ const App = (() => {
     }
 
     if (cmd === '/compact') {
-      const apiKey = getSetting('apiKey');
-      const model = getSessionSetting('model', Chat.MODELS[0].id);
+      const apiKey = getSessionSetting('apiKey');
+      const model = getSessionSetting('model');
       if (!apiKey) {
         showToast('Set API key first', 'error');
+        return true;
+      }
+      if (!model) {
+        showToast('Please set a model in session settings', 'error');
         return true;
       }
       addMessageBubble('user', '/compact');
@@ -1305,9 +1354,16 @@ const App = (() => {
       return;
     }
 
-    const apiKey = getSetting('apiKey');
+    const apiKey = getSessionSetting('apiKey');
     if (!apiKey) {
       showToast('Please set your Gemini API key in settings', 'error');
+      openSettings();
+      return;
+    }
+
+    const model = getSessionSetting('model');
+    if (!model) {
+      showToast('Please set a model in session settings', 'error');
       openSettings();
       return;
     }
@@ -1349,7 +1405,6 @@ const App = (() => {
     // Toggle UI state
     setStreamingState(true);
 
-    const model = getSessionSetting('model', Chat.MODELS[0].id);
     const enableSearch = getSessionSetting('enableSearch', false);
     const enableThinking = getSessionSetting('enableThinking', false);
 
@@ -1478,7 +1533,7 @@ const App = (() => {
 
     // Populate from session config (fallback to global for values)
     const cfg = getSessionConfig(sid);
-    const get = (key, fb) => cfg[key] ?? getSetting(key, fb);
+    const get = (key, fb) => cfgGet(cfg, key, getSetting(key, fb));
 
     // Passphrase field: only show for new sessions (first-time config)
     const ppField = $('#set-passphrase');
@@ -1494,18 +1549,17 @@ const App = (() => {
       }
     }
 
-    // Credentials (persisted globally, shown here for convenience)
-    $('#set-api-key').value = getSetting('apiKey');
-    $('#set-github-token').value = getSetting('githubToken');
-    $('#set-github-owner').value = getSetting('githubOwner');
-    $('#set-github-repo').value = getSetting('githubRepo');
-    $('#set-github-path').value = getSetting('githubPath', 'sessions');
-    $('#set-notion-storage-token').value = getSetting('notionStorageToken');
-    $('#set-notion-parent-page').value = getSetting('notionParentPageId');
-    $('#set-resend-api-key').value = getSetting('resendApiKey');
-    $('#set-notify-email').value = getSetting('notifyEmail');
-    // Session-specific settings
-    $('#set-model').value = get('model', Chat.MODELS[0].id);
+    // All settings read from per-session config (with global fallback)
+    $('#set-api-key').value = get('apiKey', '');
+    $('#set-github-token').value = get('githubToken', '');
+    $('#set-github-owner').value = get('githubOwner', '');
+    $('#set-github-repo').value = get('githubRepo', '');
+    $('#set-github-path').value = get('githubPath', 'sessions');
+    $('#set-notion-storage-token').value = get('notionStorageToken', '');
+    $('#set-notion-parent-page').value = get('notionParentPageId', '');
+    $('#set-resend-api-key').value = get('resendApiKey', '');
+    $('#set-notify-email').value = get('notifyEmail', '');
+    $('#set-model').value = get('model', '');
     $('#set-enable-search').checked = get('enableSearch', false);
     $('#set-enable-thinking').checked = get('enableThinking', false);
     $('#set-thinking-budget').value = get('thinkingBudget', '');
@@ -1539,9 +1593,9 @@ const App = (() => {
 
     // Action settings
     $('#set-action-use-storage').checked = get('actionUseStorage', true);
-    $('#set-action-token').value = getSetting('actionToken');
-    $('#set-action-owner').value = getSetting('actionOwner');
-    $('#set-action-repo').value = getSetting('actionRepo');
+    $('#set-action-token').value = get('actionToken', '');
+    $('#set-action-owner').value = get('actionOwner', '');
+    $('#set-action-repo').value = get('actionRepo', '');
     $('#set-action-branch').value = get('actionBranch', 'main');
     $('#set-action-workflow').value = get('actionWorkflow', 'execute.yml');
     $('#set-action-dir').value = get('actionArtifactDir', 'artifacts');
@@ -1564,19 +1618,36 @@ const App = (() => {
     const sessionId = settingsTarget;
     if (!sessionId) return;
 
-    // ── Credentials → always global ──
-    setSetting('apiKey', $('#set-api-key').value.trim());
-    setSetting('githubToken', $('#set-github-token').value.trim());
-    setSetting('githubOwner', $('#set-github-owner').value.trim());
-    setSetting('githubRepo', $('#set-github-repo').value.trim());
-    setSetting('githubPath', $('#set-github-path').value.trim() || 'sessions');
-    setSetting('notionStorageToken', $('#set-notion-storage-token').value.trim());
-    setSetting('notionParentPageId', $('#set-notion-parent-page').value.trim());
-    setSetting('resendApiKey', $('#set-resend-api-key').value.trim());
-    setSetting('notifyEmail', $('#set-notify-email').value.trim());
-
-    // ── Session-specific settings ──
+    // ── All settings saved to per-session config ──
     const cfg = getSessionConfig(sessionId);
+
+    // Credentials — only store non-empty values so getSessionSetting can
+    // fall back to global settings when a session doesn't override a key.
+    const credentialInputs = {
+      apiKey:             $('#set-api-key').value.trim(),
+      githubToken:        $('#set-github-token').value.trim(),
+      githubOwner:        $('#set-github-owner').value.trim(),
+      githubRepo:         $('#set-github-repo').value.trim(),
+      githubPath:         $('#set-github-path').value.trim() || 'sessions',
+      notionStorageToken: $('#set-notion-storage-token').value.trim(),
+      notionParentPageId: $('#set-notion-parent-page').value.trim(),
+      resendApiKey:       $('#set-resend-api-key').value.trim(),
+      notifyEmail:        $('#set-notify-email').value.trim(),
+    };
+
+    for (const [key, val] of Object.entries(credentialInputs)) {
+      if (val) {
+        cfg[key] = val;
+      } else {
+        delete cfg[key]; // remove so getSessionSetting falls back to global
+      }
+    }
+
+    // Propagate non-empty credentials to global as template for new sessions
+    for (const [key, val] of Object.entries(credentialInputs)) {
+      if (val) setSetting(key, val);
+    }
+
     cfg.model = $('#set-model').value;
     cfg.enableSearch = $('#set-enable-search').checked;
     cfg.enableThinking = $('#set-enable-thinking').checked;
@@ -1594,11 +1665,47 @@ const App = (() => {
     cfg.actionWorkflow = $('#set-action-workflow').value.trim() || 'execute.yml';
     cfg.actionArtifactDir = $('#set-action-dir').value.trim() || 'artifacts';
 
-    // Action repo credentials (global, only when not using storage repo)
+    // Action repo credentials — same empty-string handling
+    const actionCreds = {
+      actionToken: $('#set-action-token').value.trim(),
+      actionOwner: $('#set-action-owner').value.trim(),
+      actionRepo:  $('#set-action-repo').value.trim(),
+    };
+    for (const [key, val] of Object.entries(actionCreds)) {
+      if (val) { cfg[key] = val; } else { delete cfg[key]; }
+    }
+
     if (!cfg.actionUseStorage) {
-      setSetting('actionToken', $('#set-action-token').value.trim());
-      setSetting('actionOwner', $('#set-action-owner').value.trim());
-      setSetting('actionRepo', $('#set-action-repo').value.trim());
+      for (const [key, val] of Object.entries(actionCreds)) {
+        if (val) setSetting(key, val);
+      }
+    }
+
+    // Validate: if GitHub backend selected, required credential fields must be filled
+    if (cfg.storageBackend === 'github') {
+      const missing = [];
+      if (!cfg.githubToken)  missing.push('GitHub Token');
+      if (!cfg.githubOwner)  missing.push('Repository Owner');
+      if (!cfg.githubRepo)   missing.push('Repository Name');
+      if (missing.length) {
+        showToast(`GitHub storage requires: ${missing.join(', ')}`, 'error');
+        const firstEmpty = !cfg.githubToken ? '#set-github-token'
+          : !cfg.githubOwner ? '#set-github-owner' : '#set-github-repo';
+        const el = $(firstEmpty);
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus(); }
+        return;
+      }
+    }
+
+    // Validate: if Notion backend selected, required fields must be filled
+    if (cfg.storageBackend === 'notion') {
+      const missing = [];
+      if (!cfg.notionStorageToken)  missing.push('Notion Token');
+      if (!cfg.notionParentPageId)  missing.push('Parent Page ID');
+      if (missing.length) {
+        showToast(`Notion storage requires: ${missing.join(', ')}`, 'error');
+        return;
+      }
     }
 
     // Passphrase: required for new sessions, skip for existing
@@ -1726,13 +1833,13 @@ const App = (() => {
     const useStorage = getSessionSetting('actionUseStorage', true);
     let token, owner, repo;
     if (useStorage) {
-      token = getSetting('githubToken');
-      owner = getSetting('githubOwner');
-      repo  = getSetting('githubRepo');
+      token = getSessionSetting('githubToken');
+      owner = getSessionSetting('githubOwner');
+      repo  = getSessionSetting('githubRepo');
     } else {
-      token = getSetting('actionToken');
-      owner = getSetting('actionOwner');
-      repo  = getSetting('actionRepo');
+      token = getSessionSetting('actionToken');
+      owner = getSessionSetting('actionOwner');
+      repo  = getSessionSetting('actionRepo');
     }
     if (!token || !owner || !repo) {
       throw new Error('GitHub Actions repository not configured. Open session settings to configure.');
@@ -2264,9 +2371,9 @@ const App = (() => {
           );
 
           const settings = {
-            geminiApiKey: getSetting('apiKey'),
-            resendApiKey: getSetting('resendApiKey'),
-            notifyEmail: getSetting('notifyEmail'),
+            geminiApiKey: getSessionSetting('apiKey'),
+            resendApiKey: getSessionSetting('resendApiKey'),
+            notifyEmail: getSessionSetting('notifyEmail'),
           };
 
           const result = await GitHubActions.syncSecretsAndVars(config, settings);
@@ -2609,14 +2716,14 @@ const App = (() => {
    * Actual key values are NOT exposed — only whether they are configured.
    */
   function buildSessionContext() {
-    const model = getSessionSetting('model', Chat.MODELS[0].id);
-    const hasGeminiKey = !!getSetting('apiKey');
-    const hasGithubToken = !!getSetting('githubToken');
+    const model = getSessionSetting('model');
+    const hasGeminiKey = !!getSessionSetting('apiKey');
+    const hasGithubToken = !!getSessionSetting('githubToken');
     const useStorage = getSessionSetting('actionUseStorage', true);
-    const actionOwner = useStorage ? getSetting('githubOwner') : getSetting('actionOwner');
-    const actionRepo = useStorage ? getSetting('githubRepo') : getSetting('actionRepo');
-    const hasResendKey = !!getSetting('resendApiKey');
-    const notifyEmail = getSetting('notifyEmail');
+    const actionOwner = useStorage ? getSessionSetting('githubOwner') : getSessionSetting('actionOwner');
+    const actionRepo = useStorage ? getSessionSetting('githubRepo') : getSessionSetting('actionRepo');
+    const hasResendKey = !!getSessionSetting('resendApiKey');
+    const notifyEmail = getSessionSetting('notifyEmail');
 
     const lines = [
       '## 📋 Current Session Context',
@@ -2960,6 +3067,15 @@ const App = (() => {
       let imported = 0;
 
       for (const id of remoteIds) {
+        // Save GitHub credentials to each session's config for independent access
+        const sessCfg = getSessionConfig(id);
+        sessCfg.githubToken = token;
+        sessCfg.githubOwner = owner;
+        sessCfg.githubRepo = repo;
+        sessCfg.githubPath = path;
+        sessCfg.storageBackend = 'github';
+        saveSessionConfig(id, sessCfg);
+
         if (localIdSet.has(id)) continue; // already in index
         const entry = {
           id,
@@ -2975,7 +3091,7 @@ const App = (() => {
 
       Storage.saveIndex(localIndex);
 
-      // Persist GitHub credentials globally so the user can load these sessions
+      // Also persist GitHub credentials globally as template for new sessions
       setSetting('githubToken', token);
       setSetting('githubOwner', owner);
       setSetting('githubRepo', repo);
@@ -3061,12 +3177,6 @@ const App = (() => {
   function init() {
     configureMarked();
 
-    // Set model input default
-    const modelInput = $('#set-model');
-    if (modelInput) {
-      modelInput.value = getSetting('model', Chat.MODELS[0].id);
-    }
-
     // Event listeners
     $('#send-btn')?.addEventListener('click', sendMessage);
     $('#stop-btn')?.addEventListener('click', () => {
@@ -3119,6 +3229,21 @@ const App = (() => {
     $('#settings-btn')?.addEventListener('click', () => openSettings());
     $('#close-settings')?.addEventListener('click', closeSettings);
     $('#apply-settings')?.addEventListener('click', applySettings);
+
+    // Toggle visibility for all password fields
+    document.querySelectorAll('.password-toggle').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const inputId = btn.getAttribute('data-for');
+        const input = $(`#${inputId}`);
+        if (input) {
+          const isPassword = input.type === 'password';
+          input.type = isPassword ? 'text' : 'password';
+          btn.textContent = isPassword ? '🙈' : '👁';
+          input.focus();
+        }
+      });
+    });
 
     $('#set-storage-backend')?.addEventListener('change', toggleStorageFields);
     $('#set-enable-thinking')?.addEventListener('change', toggleThinkingFields);
