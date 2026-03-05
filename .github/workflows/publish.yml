@@ -42,4 +42,4 @@ jobs:
           user-email: github-action@github.com
           user-name: github-action
           target-branch: main
-          target-directory: '/ssm-attention-kline-predictor'
+          target-directory: '/boxed-agent'
