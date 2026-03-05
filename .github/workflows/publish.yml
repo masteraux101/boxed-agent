@@ -1,0 +1,45 @@
+name: publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "build"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          PUBLIC_URL: /boxed-agent
+      - name: Rename index.html to main.html
+        run: |
+          mv dist/index.html dist/main.html
+      - name: Push to github pages repo
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        with:
+          source-directory: 'dist'
+          destination-github-username: 'masteraux101'
+          destination-repository-name: 'masteraux101.github.io'
+          user-email: github-action@github.com
+          user-name: github-action
+          target-branch: main
+          target-directory: '/ssm-attention-kline-predictor'

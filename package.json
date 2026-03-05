@@ -1,0 +1,21 @@
+{
+  "name": "boxed-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A fully browser-based AI assistant with SOUL personality and Skill system, powered by Gemini API.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@google/genai": "^1.43.0",
+    "highlight.js": "^11.9.0",
+    "marked": "^15.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}
