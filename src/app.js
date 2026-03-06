@@ -870,7 +870,7 @@ const App = (() => {
     { cmd: '/github status', desc: '列出仓库、所有 Workflow 及正在运行的任务' },
     { cmd: '/github run',    desc: '立刻触发（workflow_dispatch）指定的 Workflow' },
     { cmd: '/github delete', desc: '删除指定的 Workflow 文件' },
-    { cmd: '/skills',        desc: '管理 Skills：加载、卸载内置或自定义 Skill' },
+    { cmd: '/skills',        desc: 'Manage skills: load/unload built-in or custom skills' },
     { cmd: '/soul',          desc: '显示当前 SOUL 名称和 URL' },
     { cmd: '/compact',       desc: '压缩对话历史，生成摘要以释放上下文' },
     { cmd: '/clear',         desc: '清空当前会话的所有消息（含存储）' },
@@ -1144,14 +1144,14 @@ const App = (() => {
             </div>
             <button class="gh-skill-toggle-btn" data-url="${escapeHtml(bs.url)}" data-loaded="${isLoaded ? '1' : '0'}"
               style="background:${isLoaded ? '#555' : 'var(--accent)'};color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;min-width:58px;">
-              ${isLoaded ? '卸载' : '加载'}
+              ${isLoaded ? 'Unload' : 'Load'}
             </button>
           </div>`;
         }).join('');
 
         const customLoaded = loadedSkills.filter(s => !BUILTIN_SKILLS.find(b => b.url === s.url));
         const customSection = customLoaded.length ? `
-          <div style="font-weight:600;margin:12px 0 6px;font-size:13px;">🌐 自定义 Skills</div>
+          <div style="font-weight:600;margin:12px 0 6px;font-size:13px;">🌐 Custom Skills</div>
           ${customLoaded.map(s => `
             <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">
               <div style="flex:1;font-size:12px;">
@@ -1160,23 +1160,23 @@ const App = (() => {
               </div>
               <button class="gh-skill-unload-btn" data-url="${escapeHtml(s.url)}"
                 style="background:#555;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;">
-                卸载
+                Unload
               </button>
             </div>
           `).join('')}
         ` : '';
 
         return `
-          <div style="font-weight:600;margin-bottom:10px;font-size:14px;">🧩 Skills 管理</div>
-          <div style="font-weight:600;margin-bottom:6px;font-size:12px;text-transform:uppercase;opacity:.6;letter-spacing:.05em;">📦 内置 Skills</div>
+          <div style="font-weight:600;margin-bottom:10px;font-size:14px;">🧩 Skill Manager</div>
+          <div style="font-weight:600;margin-bottom:6px;font-size:12px;text-transform:uppercase;opacity:.6;letter-spacing:.05em;">📦 Built-in Skills</div>
           ${builtinRows}
           ${customSection}
           <div style="margin-top:12px;display:flex;gap:6px;align-items:center;">
-            <input id="skill-add-url" type="url" placeholder="添加自定义 Skill URL…"
+            <input id="skill-add-url" type="url" placeholder="Add custom skill URL…"
               style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,#1e1e1e);color:inherit;font-size:12px;" />
             <button id="skill-add-btn"
               style="background:var(--accent);color:#fff;border:none;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;">
-              添加
+              Add
             </button>
           </div>
         `;
@@ -1192,19 +1192,19 @@ const App = (() => {
               unloadSkill(url);
               bubble.innerHTML = renderSkillPanel();
               wireButtons();
-              showToast('Skill 已卸载', 'info');
+              showToast('Skill unloaded', 'info');
             } else {
               btn.disabled = true;
-              btn.textContent = '加载中…';
+              btn.textContent = 'Loading...';
               try {
                 const parsed = await loadSkillFromUrl(url);
                 bubble.innerHTML = renderSkillPanel();
                 wireButtons();
-                showToast(`"${parsed.meta.name}" 已加载`, 'success');
+                showToast(`"${parsed.meta.name}" loaded`, 'success');
               } catch (e) {
                 btn.disabled = false;
-                btn.textContent = '加载';
-                showToast(`加载失败: ${e.message}`, 'error');
+                btn.textContent = 'Load';
+                showToast(`Load failed: ${e.message}`, 'error');
               }
             }
           });
@@ -1215,7 +1215,7 @@ const App = (() => {
             unloadSkill(btn.dataset.url);
             bubble.innerHTML = renderSkillPanel();
             wireButtons();
-            showToast('Skill 已卸载', 'info');
+            showToast('Skill unloaded', 'info');
           });
         });
 
@@ -1226,16 +1226,16 @@ const App = (() => {
             const url = addInput.value.trim();
             if (!url) return;
             addBtn.disabled = true;
-            addBtn.textContent = '加载中…';
+            addBtn.textContent = 'Loading...';
             try {
               const parsed = await loadSkillFromUrl(url);
               bubble.innerHTML = renderSkillPanel();
               wireButtons();
-              showToast(`"${parsed.meta.name}" 已加载`, 'success');
+              showToast(`"${parsed.meta.name}" loaded`, 'success');
             } catch (e) {
               addBtn.disabled = false;
-              addBtn.textContent = '添加';
-              showToast(`加载失败: ${e.message}`, 'error');
+              addBtn.textContent = 'Add';
+              showToast(`Load failed: ${e.message}`, 'error');
             }
           });
           addInput.addEventListener('keydown', e => { if (e.key === 'Enter') addBtn.click(); });

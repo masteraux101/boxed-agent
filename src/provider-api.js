@@ -34,6 +34,7 @@ const ProviderAPI = (() => {
         abortSignal = null,
         enableSearch = false,
         thinkingConfig = null,
+        _disableTools = false,
       } = config;
 
       if (!apiKey) throw new Error('Qwen API key is required');
@@ -58,6 +59,7 @@ const ProviderAPI = (() => {
 
       const lowerModel = model.toLowerCase();
       const supportsThinking = lowerModel.startsWith('qwen3-') || lowerModel.startsWith('qwq-');
+      const supportsBuiltinTools = lowerModel.startsWith('qwen3-') || lowerModel.startsWith('qwen-max') || lowerModel.startsWith('qwen-plus');
       
       let fullText = '';
       let usageInfo = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -74,7 +76,8 @@ const ProviderAPI = (() => {
 
       const extraBody = {};
       if (enableSearch) {
-        extraBody.enable_search = true;
+        // DashScope/OpenAI-compatible Qwen expects this at top-level.
+        requestBody.enable_search = true;
       }
       if (thinkingConfig?.enabled && supportsThinking) {
         extraBody.enable_thinking = true;
@@ -84,6 +87,17 @@ const ProviderAPI = (() => {
       }
       if (Object.keys(extraBody).length > 0) {
         requestBody.extra_body = extraBody;
+      }
+
+      // Align with tool-based invocation style where the model supports it.
+      // Keep enable_search for compatibility with older behavior.
+      if (enableSearch && supportsBuiltinTools && !_disableTools) {
+        requestBody.tools = [
+          { type: 'web_search' },
+          { type: 'web_extractor' },
+          { type: 'code_interpreter' },
+        ];
+        requestBody.tool_choice = 'auto';
       }
 
       const response = await fetch(url, {
@@ -106,6 +120,7 @@ const ProviderAPI = (() => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let pendingBuffer = '';
+      let sawToolCall = false;
 
       function processSseLine(line) {
         if (!line.trim() || line.startsWith(':')) return;
@@ -122,6 +137,9 @@ const ProviderAPI = (() => {
             if (onChunk) {
               onChunk({ type: 'text', text: chunkText });
             }
+          }
+          if (chunk.choices?.[0]?.delta?.tool_calls?.length) {
+            sawToolCall = true;
           }
           if (chunk.usage) {
             usageInfo = {
@@ -153,6 +171,15 @@ const ProviderAPI = (() => {
         }
       } finally {
         reader.releaseLock();
+      }
+
+      // Some models may emit tool-calls without final text in this endpoint.
+      // Fallback once without tools to avoid blank responses.
+      if (!fullText.trim() && sawToolCall && !_disableTools) {
+        return generateContent({
+          ...config,
+          _disableTools: true,
+        });
       }
 
       return { text: fullText, usageInfo };
