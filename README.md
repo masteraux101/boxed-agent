@@ -1,5 +1,7 @@
 # Boxed Agent 🤖
 
+⚠️ **Status: Under Active Development** — Features and APIs may change
+
 A fully **browser-based AI assistant** with customizable SOUL personality, pluggable Skills, and seamless GitHub Actions integration. Run AI workflows directly in your browser with encrypted session storage.
 
 > **Powered by Google Gemini API** | **Works offline after initial load** | **Zero server backend required**
@@ -225,26 +227,17 @@ Authorization: `Bearer ${notionToken}`
 │   ├── soul-loader.js         # Load SOUL definitions
 │   └── github-actions.js      # Trigger workflows, monitor runs
 │
-├── examples/
-│   ├── souls/
-│   │   ├── DEFAULT_SOUL.md    # Default assistant personality
-│   │   ├── GUIDE_SOUL.md      # Coach/mentor personality
-│   │   └── index.json         # Soul registry
-│   └── skills/
-│       ├── ai-prompt-scheduler.md
-│       ├── code-review.md
-│       ├── email-resend.md
-│       ├── github-scheduler.md
-│       └── translator.md
-│
-├── playground/
-│   ├── langgraph-basic.js             # LangGraph integration tests
-│   ├── langgraph-code-validation.js   # Code validation workflow
-│   ├── langgraph-tools.js             # Tool calling patterns
-│   ├── langgraph-watchdog.js          # Self-healing task monitoring
-│   └── README.md                      # Playground documentation
-│
-└── dist/                      # Build output (generated)
+└── examples/
+    ├── souls/
+    │   ├── DEFAULT_SOUL.md    # Default assistant personality
+    │   ├── GUIDE_SOUL.md      # Coach/mentor personality
+    │   └── index.json         # Soul registry
+    └── skills/
+        ├── ai-prompt-scheduler.md
+        ├── code-review.md
+        ├── email-resend.md
+        ├── github-scheduler.md
+        └── translator.md
 ```
 
 ---
@@ -267,17 +260,6 @@ Authorization: `Bearer ${notionToken}`
 3. **Never share your passphrase** (not recoverable)
 4. **Review auto-loaded Skills** before using them in production
 5. **Audit GitHub Actions logs** in your repo
-
----
-
-## 🧪 Playground / Advanced Testing
-
-The `playground/` folder contains experimental code for:
-- **LangGraph integration**: Multi-agent workflows, tool calling, reasoning chains
-- **Watchdog + Runner pattern**: Self-healing, long-running task orchestration
-- **Code validation**: Automated testing of model-generated code
-
-See [playground/README.md](playground/README.md) for details.
 
 ---
 
@@ -307,12 +289,6 @@ Edit `src/storage.js`:
 - Implement `save()`, `load()`, `remove()` for your backend
 - Encryption happens at `Crypto` layer; you just handle transport
 - Register in `Storage.handlers` or UI settings
-
-### Testing GitHub Actions
-Use playground scripts to test workflow execution:
-```bash
-node playground/langgraph-watchdog.js
-```
 
 ---
 
@@ -389,8 +365,7 @@ git subtree push --prefix dist origin gh-pages
 ## 🤝 Contributing
 
 Contributions welcome! Please:
-1. Test in `playground/` before submitting
-2. Follow existing code style (ESLint config provided)
+1. Follow existing code style (ESLint config provided)
 3. Document new SOULs and Skills with examples
 4. Update this README for major features
 
