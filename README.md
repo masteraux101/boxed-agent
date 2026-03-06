@@ -2,7 +2,7 @@
 
 ⚠️ **Status: Under Active Development** — Features and APIs may change
 
-A fully **browser-based AI assistant** with customizable SOUL personality, pluggable Skills, and seamless GitHub Actions integration. Run AI workflows directly in your browser with encrypted session storage.
+A fully **browser-based AI assistant** with customizable SOUL personality, pluggable Skills, and seamless session management. Run AI workflows directly in your browser with encrypted session storage.
 
 > **Powered by Google Gemini API** | **Works offline after initial load** | **Zero server backend required**
 
@@ -21,8 +21,7 @@ A fully **browser-based AI assistant** with customizable SOUL personality, plugg
 ### 🛠️ Skills
 - Add specialized capabilities (code review, email sending, translation, etc.)
 - Skills can be bundled with the app or loaded from external URLs
-- Skills are safely evaluated in the context of GitHub Actions workflows
-- Built-in skills: AI Prompt Scheduler, Code Review, Email (Resend), GitHub Scheduler, Translator
+- Built-in skills: AI Prompt Scheduler, Code Review, Email (Resend), Translator
 
 ### 🔐 Encrypted Storage
 - **AES-256-GCM encryption** with PBKDF2 key derivation (310K iterations)
@@ -32,13 +31,6 @@ A fully **browser-based AI assistant** with customizable SOUL personality, plugg
   - **localStorage** (device-local, temporary)
   - **GitHub** (persistent, needs GitHub PAT + repo)
   - **Notion** (planned)
-
-### ⚙️ GitHub Actions Integration
-- Deploy and execute model-generated code directly to GitHub Actions
-- Set up scheduled workflows with cron expressions
-- Receive notifications via email or webhooks
-- Long-running tasks can self-heal via watchdog workflow chaining
-- Full audit trail in your GitHub repo
 
 ### 🔄 Session Management
 - Create multiple independent sessions with different SOULs and settings
@@ -60,7 +52,7 @@ Visit **[https://masteraux101.github.io/boxed-agent/main.html](https://masteraux
 
 - Node.js 18+ (for development only; app runs in browser)
 - Google Gemini API key ([get one free](https://ai.google.dev))
-- Optional: GitHub PAT for cloud storage and Actions integration
+- Optional: GitHub PAT for cloud storage
 
 ### Installation
 
@@ -139,21 +131,6 @@ baseSoulInstruction = SOUL_SYSTEM_PROMPT +
 This combined prompt is sent to the model for each message.
 ```
 
-### GitHub Actions Workflow
-```
-Model generates code
-    ↓
-User reviews in UI
-    ↓
-Push to GitHub Actions
-    ↓
-Runner executes task
-    ↓
-Watchdog monitors progress
-    ↓
-Send notifications (email / webhook)
-```
-
 ---
 
 ## ⚙️ Configuration
@@ -171,8 +148,6 @@ Stored in `localStorage` under `browseragent_session_cfg_<sessionId>` (encrypted
 - Model selection
 - Search/thinking enablement
 - Storage backend (GitHub, Notion, etc.)
-- GitHub Actions configuration
-- Notification settings
 
 ### Environment Variables (Development)
 Create a `.env` file (not committed):
@@ -199,7 +174,7 @@ const response = await fetch('https://generativelanguage.googleapis.com/v1/model
 ```javascript
 // Token-based authentication for repo access
 Authorization: `Bearer ${githubToken}`
-// Used for reading/writing session files and triggering workflows
+// Used for reading/writing session files
 ```
 
 ### Notion API
@@ -224,8 +199,7 @@ Authorization: `Bearer ${notionToken}`
 │   ├── chat.js                # Message handling, streaming
 │   ├── crypto.js              # AES-256-GCM encryption (Web Crypto API)
 │   ├── storage.js             # Persistence layer (localStorage/GitHub/Notion)
-│   ├── soul-loader.js         # Load SOUL definitions
-│   └── github-actions.js      # Trigger workflows, monitor runs
+│   └── soul-loader.js         # Load SOUL definitions
 │
 └── examples/
     ├── souls/
@@ -236,7 +210,6 @@ Authorization: `Bearer ${notionToken}`
         ├── ai-prompt-scheduler.md
         ├── code-review.md
         ├── email-resend.md
-        ├── github-scheduler.md
         └── translator.md
 ```
 
@@ -252,14 +225,11 @@ Authorization: `Bearer ${notionToken}`
 ### ⚠️ What's Not Encrypted
 - Session index (IDs, titles, timestamps)
 - Global settings (unless explicitly set per-session)
-- GitHub repo names and paths (encrypted at rest in GitHub)
 
 ### 🛡️ Best Practices
 1. **Use strong passphrases** for your sessions
-2. **Rotate GitHub PATs** regularly
-3. **Never share your passphrase** (not recoverable)
-4. **Review auto-loaded Skills** before using them in production
-5. **Audit GitHub Actions logs** in your repo
+2. **Never share your passphrase** (not recoverable)
+3. **Review auto-loaded Skills** before using them in production
 
 ---
 
@@ -383,25 +353,11 @@ Contributions welcome! Please:
 
 ## 💡 Examples
 
-### Example 1: Set up a code reviewer
+### Example: Set up a code reviewer
 1. Create new session
 2. Load "Code Review" Skill
 3. Select "Code Reviewer" SOUL
 4. Paste your code → AI reviews it
-
-### Example 2: Schedule a daily report
-1. Load "GitHub Scheduler" Skill
-2. Configure cron: `0 9 * * *` (9 AM daily)
-3. Set email notification
-4. Deploy to GitHub Actions
-5. Receive reports automatically
-
-### Example 3: Self-healing long job
-1. Create a task that might timeout
-2. Use "langgraph-watchdog.js" pattern
-3. Watchdog monitors progress
-4. Auto-restarts if needed
-5. Final status via webhook
 
 ---
 
