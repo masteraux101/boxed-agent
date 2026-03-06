@@ -1000,6 +1000,40 @@ const App = (() => {
       return true;
     }
 
+    // Handle /soul <name> to switch SOUL
+    if (text.trim().toLowerCase().startsWith('/soul ')) {
+      const soulName = text.trim().slice(6).trim();
+      addMessageBubble('user', text.trim());
+      
+      const soul = BUILTIN_SOULS.find(s => 
+        s.name.toLowerCase() === soulName.toLowerCase()
+      );
+      
+      if (!soul) {
+        addMessageBubble('model', `❌ SOUL not found: "${soulName}". Available: ${BUILTIN_SOULS.map(s => s.name).join(', ')}`);
+        return true;
+      }
+      
+      (async () => {
+        try {
+          const bubble = addMessageBubble('model', `⏳ Loading SOUL: **${soulName}**…`);
+          
+          // Update session config with new soul URL
+          const cfg = getSessionConfig(currentSessionId);
+          cfg.soulUrl = soul.url;
+          saveSessionConfig(currentSessionId, cfg);
+          
+          // Load the new soul
+          await loadSoulAndSkills();
+          bubble.innerHTML = renderMarkdown(`✅ Switched to SOUL: **${currentSoulName}** (${loadedSkillCount} skill(s) loaded)`);
+        } catch (err) {
+          addMessageBubble('model', `❌ Failed to load SOUL: ${err.message}`);
+        }
+      })();
+      
+      return true;
+    }
+
     if (cmd === '/soul') {
       const soulUrl = getSessionSetting('soulUrl');
       addMessageBubble('user', '/soul');
@@ -1007,6 +1041,35 @@ const App = (() => {
         'model',
         `**Current SOUL:** ${currentSoulName || 'None'}\n**URL:** ${soulUrl || 'Not set'}\n**Skills loaded:** ${loadedSkillCount}`
       );
+      return true;
+    }
+
+    // Handle /skill <name> to load a skill
+    if (text.trim().toLowerCase().startsWith('/skill ')) {
+      const skillName = text.trim().slice(7).trim();
+      addMessageBubble('user', text.trim());
+      
+      const skill = BUILTIN_SKILLS.find(s => 
+        s.name.toLowerCase() === skillName.toLowerCase() ||
+        s.url.toLowerCase().includes(skillName.toLowerCase())
+      );
+      
+      if (!skill) {
+        const available = BUILTIN_SKILLS.map(s => s.name).join(', ');
+        addMessageBubble('model', `❌ Skill not found: "${skillName}". Available: ${available}`);
+        return true;
+      }
+      
+      (async () => {
+        try {
+          const bubble = addMessageBubble('model', `⏳ Loading skill: **${skill.name}**…`);
+          const parsed = await loadSkillFromUrl(skill.url);
+          bubble.innerHTML = renderMarkdown(`✅ Loaded skill: **${parsed.meta?.name || skill.name}**\n\n${parsed.meta?.description || ''}`);
+        } catch (err) {
+          addMessageBubble('model', `❌ Failed to load skill: ${err.message}`);
+        }
+      })();
+      
       return true;
     }
 

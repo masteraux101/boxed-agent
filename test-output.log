@@ -1,0 +1,104 @@
+🚀 Starting Detailed Error-Aware Test
+
+
+📍 Navigating to http://localhost:5173/
+🐛 [10:55:46 AM] [vite] connecting...
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+▶ [10:55:46 AM] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+🐛 [10:55:46 AM] [vite] connected.
+❌ [10:55:46 AM] Failed to load resource: the server responded with a status of 404 (Not Found)
+✅ Page loaded
+
+╔════════════════════════════════════════╗
+║ Creating Session with GitHub Storage   ║
+╚════════════════════════════════════════╝
+
+📝 [10:55:47 AM] Settings pre-configured in localStorage
+ℹ️  Clicking #new-session-btn
+ℹ️  Filling API Key
+ℹ️  Filling Passphrase
+ℹ️  Filling Model
+ℹ️  Filling GitHub Token
+ℹ️  Filling GitHub Owner
+ℹ️  Filling GitHub Repo
+ℹ️  Setting storage backend to 'github'
+ℹ️  Clicking #apply-settings
+✅ Session creation finished
+
+⏳ Waiting to collect browser messages (3 seconds)...
+
+╔════════════════════════════════════════╗
+║ Testing Skill Loading                  ║
+╚════════════════════════════════════════╝
+
+✓ Input field is enabled
+ℹ️  Typed '/skill' command
+✓ Skill menu appeared
+ℹ️  Found 1 skill(s)
+   - /skills: 管理 Skills：加载、卸载内置或自定义 Skill
+ℹ️  Typed: "/skill github-scheduler"
+✓ Skill command sent
+❌ [10:56:00 AM] Failed to load resource: the server responded with a status of 404 ()
+
+╔════════════════════════════════════════╗
+║ Testing Soul Switching                 ║
+╚════════════════════════════════════════╝
+
+Current Soul: "BrowserAgent"
+
+╔════════════════════════════════════════╗
+║ Verifying GitHub Storage Setup         ║
+╚════════════════════════════════════════╝
+
+Storage Configuration:
+  Backend: github
+  GitHub Owner: masteraux1
+  GitHub Repo: boxed-agent-demo-sessions
+  API Key: ✓ Set
+  Model: gemini-2.5-flash
+
+✅ Tests completed
+
+╔════════════════════════════════════════╗
+║ ERROR & MESSAGE REPORT                 ║
+╚════════════════════════════════════════╝
+
+✅ No uncaught JavaScript errors
+
+✅ No toast notifications observed
+
+📝 CONSOLE LOGS (14):
+   [debug] [vite] connecting...
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [verbose] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o
+   [debug] [vite] connected.
+   [error] Failed to load resource: the server responded with a status of 404 (Not Found)
+   [log] Settings pre-configured in localStorage
+   [error] Failed to load resource: the server responded with a status of 404 ()
+
+⏳ Browser closes in 3 seconds...
+❌ [10:56:01 AM] Failed to load resource: the server responded with a status of 404 ()
+❌ [10:56:02 AM] Failed to load resource: the server responded with a status of 404 ()
+❌ [10:56:02 AM] Auto-save failed: Error: GitHub save failed (404): {
+  "message": "Not Found",
+  "documentation_url": "https://docs.github.com/rest/repos/contents#create-or-update-file-contents",
+  "status": "404"
+}
+
+    at Object.save (http://localhost:5173/src/storage.js:139:15)
+    at async saveCurrentSession (http://localhost:5173/src/app.js:475:9)
+🧹 Cleanup completed
