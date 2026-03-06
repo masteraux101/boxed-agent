@@ -18,10 +18,20 @@ A fully **browser-based AI assistant** with customizable SOUL personality, plugg
 - Built-in SOULs included; load custom SOULs from URLs
 - SOUL instructions are dynamically composed with loaded Skills
 
+**Load external SOUL example:**
+```
+/soul https://raw.githubusercontent.com/masteraux101/boxed-agent/refs/heads/main/examples/souls/GUIDE_SOUL.md
+```
+
 ### 🛠️ Skills
 - Add specialized capabilities (code review, email sending, translation, etc.)
 - Skills can be bundled with the app or loaded from external URLs
 - Built-in skills: AI Prompt Scheduler, Code Review, Email (Resend), Translator
+
+**Load external Skill example:**
+```
+/skill https://raw.githubusercontent.com/masteraux101/boxed-agent/refs/heads/main/examples/skills/ai-prompt-scheduler.md
+```
 
 ### 🔐 Encrypted Storage
 - **AES-256-GCM encryption** with PBKDF2 key derivation (310K iterations)
