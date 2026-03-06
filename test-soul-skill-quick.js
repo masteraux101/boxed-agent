@@ -25,13 +25,17 @@ async function test() {
 
     // Setup
     await page.evaluate(() => {
+      // ⚠️ For testing, set environment variables:
+      // GEMINI_KEY, GITHUB_PAT, GITHUB_OWNER, GITHUB_REPO
+      const apiKey = process.env.GEMINI_KEY || 'YOUR_GEMINI_API_KEY';
+      const githubToken = process.env.GITHUB_PAT || 'YOUR_GITHUB_PAT';
       localStorage.setItem('browseragent_settings', JSON.stringify({
-        apiKey: "YOUR_GEMINI_API_KEY",
+        apiKey: apiKey,
         model: 'gemini-2.5-flash',
         storageBackend: 'github',
-        githubToken: "YOUR_GITHUB_PAT",
-        githubOwner: "masteraux101",
-        githubRepo: "my-agent-session",
+        githubToken: githubToken,
+        githubOwner: process.env.GITHUB_OWNER || 'masteraux101',
+        githubRepo: process.env.GITHUB_REPO || 'my-agent-session',
       }));
     });
 
@@ -40,7 +44,7 @@ async function test() {
     await page.waitForTimeout(800);
 
     const fields = [
-      ['#set-api-key', 'AIzaSyB3HZkS6bBA23tLHTq1xbm1n25i-oqxsWE'],
+      ['#set-api-key', 'YOUR_GEMINI_API_KEY'],
       ['#set-passphrase', 'test123'],
       ['#set-model', 'gemini-2.5-flash'],
       ['#set-github-token', 'YOUR_GITHUB_PAT'],
@@ -49,7 +53,10 @@ async function test() {
     ];
 
     for (const [sel, val] of fields) {
-      await page.locator(sel).fill(val).catch(() => {});
+      // Skip placeholder values during test
+      if (!val.includes('YOUR_')) {
+        await page.locator(sel).fill(val).catch(() => {});
+      }
     }
 
     await page.locator('#set-storage-backend').selectOption('github').catch(() => {});

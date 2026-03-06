@@ -10,10 +10,12 @@ async function runNetworkAwareTest() {
   let browser;
   let page;
 
-  const GEMINI_KEY = "YOUR_GEMINI_API_KEY";
-  const GITHUB_PAT = "YOUR_GITHUB_PAT";
-  const GITHUB_OWNER = "masteraux101";
-  const GITHUB_REPO = "my-agent-session";
+  // ⚠️ For testing, set these environment variables:
+  // GEMINI_KEY, GITHUB_PAT, GITHUB_OWNER, GITHUB_REPO
+  const GEMINI_KEY = process.env.GEMINI_KEY || 'YOUR_GEMINI_API_KEY';
+  const GITHUB_PAT = process.env.GITHUB_PAT || 'YOUR_GITHUB_PAT';
+  const GITHUB_OWNER = process.env.GITHUB_OWNER || 'masteraux101';
+  const GITHUB_REPO = process.env.GITHUB_REPO || 'my-agent-session';
   const TEST_PASSPHRASE = "demo-test-2026";
 
   const networkRequests = [];
@@ -78,12 +80,12 @@ async function runNetworkAwareTest() {
 
     await page.evaluate(() => {
       const settings = {
-        apiKey: "YOUR_GEMINI_API_KEY",
+        apiKey: process.env.GEMINI_KEY || 'YOUR_GEMINI_API_KEY',
         model: 'gemini-2.5-flash',
         storageBackend: 'github',
-        githubToken: "YOUR_GITHUB_PAT",
-        githubOwner: "masteraux101",
-        githubRepo: "my-agent-session",
+        githubToken: process.env.GITHUB_PAT || 'YOUR_GITHUB_PAT',
+        githubOwner: process.env.GITHUB_OWNER || 'masteraux101',
+        githubRepo: process.env.GITHUB_REPO || 'my-agent-session',
         githubPath: "sessions",
       };
       localStorage.setItem('browseragent_settings', JSON.stringify(settings));
@@ -110,8 +112,11 @@ async function runNetworkAwareTest() {
 
     for (const field of fields) {
       const element = page.locator(field.selector);
-      if (await element.isVisible({ timeout: 1500 }).catch(() => false)) {
-        await element.fill(field.value);
+      // Skip placeholder values
+      if (field.value && !field.value.includes('YOUR_')) {
+        if (await element.isVisible({ timeout: 1500 }).catch(() => false)) {
+          await element.fill(field.value);
+        }
       }
     }
 
