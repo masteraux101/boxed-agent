@@ -30,11 +30,11 @@ const App = (() => {
   const SESSION_CFG_PREFIX = 'browseragent_session_cfg_';
 
   // Keys that are per-session (each session stores its own independent copy)
-  const SESSION_KEYS = ['apiKey', 'model', 'enableSearch', 'enableThinking', 'thinkingBudget', 'includeThoughts', 'soulUrl', 'notionToken', 'corsProxy', 'storageBackend', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionUseStorage', 'actionBranch', 'actionWorkflow', 'actionArtifactDir', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail'];
+  const SESSION_KEYS = ['apiKey', 'qwenApiKey', 'provider', 'model', 'enableSearch', 'enableThinking', 'thinkingBudget', 'includeThoughts', 'soulUrl', 'notionToken', 'corsProxy', 'storageBackend', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionUseStorage', 'actionBranch', 'actionWorkflow', 'actionArtifactDir', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail'];
 
   // Credential-type keys where empty string should be treated as "not set"
   // so the ?? / fallback logic can reach the next level (global settings).
-  const CREDENTIAL_KEYS = new Set(['apiKey', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail', 'notionToken']);
+  const CREDENTIAL_KEYS = new Set(['apiKey', 'qwenApiKey', 'githubToken', 'githubOwner', 'githubRepo', 'githubPath', 'notionStorageToken', 'notionParentPageId', 'actionToken', 'actionOwner', 'actionRepo', 'resendApiKey', 'notifyEmail', 'notionToken']);
 
   /**
    * Read a value from a config object with fallback, treating empty strings
@@ -45,6 +45,37 @@ const App = (() => {
     if (val == null) return fallback;
     if (val === '' && CREDENTIAL_KEYS.has(key)) return fallback;
     return val;
+  }
+
+  function inferProviderFromModel(model, fallback = 'gemini') {
+    if (!model) return fallback;
+    const m = String(model).toLowerCase();
+    if (m.startsWith('qwen') || m.startsWith('qwq')) return 'qwen';
+    return 'gemini';
+  }
+
+  function inferModelDimensions(provider, model) {
+    const modelId = (model || '').trim().toLowerCase();
+    const fallback = { search: true, thinking: false };
+    if (!modelId) return fallback;
+
+    const known = Chat.MODELS.find((m) =>
+      (m.provider || inferProviderFromModel(m.id)) === provider &&
+      m.id.toLowerCase() === modelId
+    );
+    if (known?.dimensions) return known.dimensions;
+
+    if (provider === 'qwen') {
+      return {
+        search: /^qwen3-|^qwen-(max|plus|turbo)/.test(modelId),
+        thinking: /^qwen3-|^qwq-/.test(modelId),
+      };
+    }
+
+    return {
+      search: true,
+      thinking: /gemini-2\.5/.test(modelId),
+    };
   }
 
   // Built-in SOUL files — loaded dynamically from examples/souls/index.json
@@ -1443,18 +1474,32 @@ const App = (() => {
       return;
     }
 
-    const apiKey = getSessionSetting('apiKey');
-    if (!apiKey) {
-      showToast('Please set your Gemini API key in settings', 'error');
-      openSettings();
-      return;
-    }
-
     const model = getSessionSetting('model');
     if (!model) {
       showToast('Please set a model in session settings', 'error');
       openSettings();
       return;
+    }
+
+    // Determine provider from explicit setting first, then model hint.
+    const provider = getSessionSetting('provider') || inferProviderFromModel(model);
+    
+    // Get the appropriate API key for the provider
+    let apiKey;
+    if (provider === 'qwen') {
+      apiKey = getSessionSetting('qwenApiKey');
+      if (!apiKey) {
+        showToast('Please set your Qwen API key in settings', 'error');
+        openSettings();
+        return;
+      }
+    } else {
+      apiKey = getSessionSetting('apiKey');
+      if (!apiKey) {
+        showToast('Please set your Gemini API key in settings', 'error');
+        openSettings();
+        return;
+      }
     }
 
     // Check for slash commands
@@ -1525,7 +1570,9 @@ const App = (() => {
 
     try {
       await Chat.send({
+        provider,
         apiKey,
+        qwenApiKey: getSessionSetting('qwenApiKey'),
         model,
         message: text,
         enableSearch,
@@ -1640,6 +1687,7 @@ const App = (() => {
 
     // All settings read from per-session config (with global fallback)
     $('#set-api-key').value = get('apiKey', '');
+    $('#set-qwen-api-key').value = get('qwenApiKey', '');
     $('#set-github-token').value = get('githubToken', '');
     $('#set-github-owner').value = get('githubOwner', '');
     $('#set-github-repo').value = get('githubRepo', '');
@@ -1648,7 +1696,13 @@ const App = (() => {
     $('#set-notion-parent-page').value = get('notionParentPageId', '');
     $('#set-resend-api-key').value = get('resendApiKey', '');
     $('#set-notify-email').value = get('notifyEmail', '');
+    
+    // Set provider/model from saved config
+    const modelValue = get('model', '');
+    const providerValue = get('provider', inferProviderFromModel(modelValue));
+    $('#set-provider').value = providerValue;
     $('#set-model').value = get('model', '');
+    
     $('#set-enable-search').checked = get('enableSearch', false);
     $('#set-enable-thinking').checked = get('enableThinking', false);
     $('#set-thinking-budget').value = get('thinkingBudget', '');
@@ -1692,6 +1746,7 @@ const App = (() => {
     toggleStorageFields();
     toggleThinkingFields();
     toggleActionFields();
+    updateProviderSections();
   }
 
   function closeSettings() {
@@ -1714,6 +1769,7 @@ const App = (() => {
     // fall back to global settings when a session doesn't override a key.
     const credentialInputs = {
       apiKey:             $('#set-api-key').value.trim(),
+      qwenApiKey:         $('#set-qwen-api-key').value.trim(),
       githubToken:        $('#set-github-token').value.trim(),
       githubOwner:        $('#set-github-owner').value.trim(),
       githubRepo:         $('#set-github-repo').value.trim(),
@@ -1737,7 +1793,14 @@ const App = (() => {
       if (val) setSetting(key, val);
     }
 
-    cfg.model = $('#set-model').value;
+    // Get provider/model from settings
+    const selectedProvider = $('#set-provider').value || inferProviderFromModel($('#set-model').value.trim());
+    let selectedModel = $('#set-model').value.trim();
+    if (!selectedModel) {
+      selectedModel = selectedProvider === 'qwen' ? 'qwen-turbo' : 'gemini-2.5-flash';
+    }
+    cfg.provider = selectedProvider;
+    cfg.model = selectedModel;
     cfg.enableSearch = $('#set-enable-search').checked;
     cfg.enableThinking = $('#set-enable-thinking').checked;
     cfg.thinkingBudget = $('#set-thinking-budget').value.trim();
@@ -1896,9 +1959,62 @@ const App = (() => {
     }
   }
 
+  function updateProviderSections() {
+    const provider = $('#set-provider')?.value || 'gemini';
+    const geminiFields = $('#gemini-fields');
+    const qwenFields = $('#qwen-fields');
+    const modelInput = $('#set-model');
+
+    if (provider === 'qwen') {
+      show(qwenFields);
+      hide(geminiFields);
+      if (modelInput && !modelInput.value.trim()) {
+        modelInput.value = 'qwen-turbo';
+      }
+    } else {
+      show(geminiFields);
+      hide(qwenFields);
+      if (modelInput && !modelInput.value.trim()) {
+        modelInput.value = 'gemini-2.5-flash';
+      }
+    }
+
+    updateModelDimensionUI();
+  }
+
+  function updateModelDimensionUI() {
+    const provider = $('#set-provider')?.value || 'gemini';
+    const model = $('#set-model')?.value || '';
+    const dims = inferModelDimensions(provider, model);
+
+    const searchEl = $('#set-enable-search');
+    const thinkEl = $('#set-enable-thinking');
+    const capabilityHint = $('#model-capability-hint');
+
+    if (searchEl) {
+      searchEl.disabled = !dims.search;
+      if (!dims.search) searchEl.checked = false;
+    }
+
+    if (thinkEl) {
+      thinkEl.disabled = !dims.thinking;
+      if (!dims.thinking) thinkEl.checked = false;
+    }
+
+    if (capabilityHint) {
+      const searchText = dims.search ? 'Search: supported' : 'Search: not supported';
+      const thinkText = dims.thinking ? 'Think: supported' : 'Think: not supported';
+      capabilityHint.textContent = `${searchText} | ${thinkText} for current model`;
+    }
+
+    toggleThinkingFields();
+  }
+
+
   function toggleThinkingFields() {
     const checked = $('#set-enable-thinking').checked;
-    if (checked) {
+    const canUseThinking = !$('#set-enable-thinking').disabled;
+    if (checked && canUseThinking) {
       show('#thinking-fields');
     } else {
       hide('#thinking-fields');
@@ -3336,6 +3452,9 @@ const App = (() => {
     });
 
     $('#set-storage-backend')?.addEventListener('change', toggleStorageFields);
+    $('#set-provider')?.addEventListener('change', updateProviderSections);
+    $('#set-model')?.addEventListener('input', updateModelDimensionUI);
+    $('#set-model')?.addEventListener('change', updateModelDimensionUI);
     $('#set-enable-thinking')?.addEventListener('change', toggleThinkingFields);
     $('#auto-create-repo-btn')?.addEventListener('click', autoCreateGitHubRepo);
     $('#set-action-use-storage')?.addEventListener('change', toggleActionFields);

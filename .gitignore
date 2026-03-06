@@ -4,3 +4,4 @@ dist/
 *.local
 playground/
 .github/copilot-instructions.md
+.env

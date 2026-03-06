@@ -627,7 +627,7 @@ const GitHubActions = (() => {
    * Sync all required secrets and variables for scheduled tasks.
    * Reads values from the provided settings map and pushes to the repo.
    * @param {Object} config - { token, owner, repo }
-   * @param {Object} settings - { geminiApiKey?, resendApiKey?, notifyEmail? }
+   * @param {Object} settings - { geminiApiKey?, qwenApiKey?, resendApiKey?, notifyEmail? }
    * @returns {Object} { synced: string[], skipped: string[], errors: string[] }
    */
   async function syncSecretsAndVars(config, settings) {
@@ -638,6 +638,7 @@ const GitHubActions = (() => {
     // Secrets
     const secrets = [
       { name: 'GEMINI_API_KEY', value: settings.geminiApiKey },
+      { name: 'QWEN_API_KEY', value: settings.qwenApiKey },
       { name: 'RESEND_API_KEY', value: settings.resendApiKey },
     ];
 

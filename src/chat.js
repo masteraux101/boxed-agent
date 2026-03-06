@@ -1,19 +1,16 @@
 /**
- * chat.js — Gemini API streaming via @google/genai SDK + multi-turn history
+ * chat.js — Unified multi-provider AI chat interface
  *
- * Uses dynamic import() to lazy-load the SDK on first API call.
+ * Routes requests to Gemini, Qwen, or other OpenAI-compatible providers.
  */
 
+import ProviderAPI from './provider-api.js';
+
 const Chat = (() => {
-  /* eslint-disable -- keeping original structure */
+  // Combined model list from all providers
   const MODELS = [
-    { id: 'gemini-3.0-flash', name: 'Gemini 3.0 Flash' },
-    { id: 'gemini-2.5-flash-preview-05-20', name: 'Gemini 2.5 Flash (Preview)' },
-    { id: 'gemini-2.5-pro-preview-05-06', name: 'Gemini 2.5 Pro (Preview)' },
-    { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-    { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+    ...ProviderAPI.Gemini.GEMINI_MODELS,
+    ...ProviderAPI.Qwen.QWEN_MODELS,
   ];
 
   let history = [];
@@ -29,74 +26,32 @@ const Chat = (() => {
     requestCount: 0,
   };
 
-  // ─── SDK lazy-loader ───────────────────────────────────────────────
-
-  let _GoogleGenAI = null;
-
-  /**
-   * Lazily import the SDK and return a new GoogleGenAI client for the given key.
-   */
-  async function getAI(apiKey) {
-    if (!_GoogleGenAI) {
-      try {
-        const mod = await import('@google/genai');
-        _GoogleGenAI = mod.GoogleGenAI;
-      } catch (e) {
-        throw new Error(
-          'Failed to load Google GenAI SDK. Please check your internet connection and refresh the page.'
-        );
-      }
-    }
-    return new _GoogleGenAI({ apiKey });
-  }
-
   // ─── Getters / Setters ────────────────────────────────────────────
 
-  /**
-   * Set system instruction (from SOUL + Skills)
-   */
   function setSystemInstruction(instruction) {
     systemInstruction = instruction;
   }
 
-  /**
-   * Get current system instruction
-   */
   function getSystemInstruction() {
     return systemInstruction;
   }
 
-  /**
-   * Get current history
-   */
   function getHistory() {
     return [...history];
   }
 
-  /**
-   * Set history (for restoring sessions)
-   */
   function setHistory(h) {
     history = h || [];
   }
 
-  /**
-   * Clear history
-   */
   function clearHistory() {
     history = [];
   }
 
-  /**
-   * Get current token usage stats
-   */
   function getTokenUsage() {
     return { ...tokenUsage };
   }
 
-  /**
-   * Reset token usage counters
-   */
   function resetTokenUsage() {
     tokenUsage = {
       promptTokens: 0,
@@ -107,80 +62,63 @@ const Chat = (() => {
     };
   }
 
-  // ─── Compact History ──────────────────────────────────────────────
-
   /**
-   * Compact history — keep a summary + last few turns
+   * Compact history by removing first user+model pair (older conversation).
    */
-  async function compactHistory(apiKey, model) {
-    if (history.length < 4) return 'History too short to compact.';
+  function compactHistory() {
+    // Find the first pair of (user message, model response)
+    let compactedCount = 0;
+    for (let i = 0; i < history.length - 1; i++) {
+      if (history[i].role === 'user' && history[i + 1].role === 'model') {
+        // Remove first two: user msg and response
+        history.splice(0, 2);
+        compactedCount += 2;
+        console.log(
+          `[Chat] Compacted history: removed 2 messages, ${history.length} remain`
+        );
+        break;
+      }
+    }
 
-    const ai = await getAI(apiKey);
-    const summaryContents = [
-      ...history,
-      {
-        role: 'user',
-        parts: [
-          {
-            text: 'Please provide a concise summary of our entire conversation so far. This will be used to replace the full history to save context space. Summarize all key points, decisions, and context.',
-          },
-        ],
-      },
-    ];
+    if (!compactedCount) {
+      // If we can't find a pair, just remove the first 2 messages
+      history.splice(0, Math.min(2, history.length));
+      console.log(
+        `[Chat] Compacted history (fallback): ${history.length} messages remain`
+      );
+    }
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: summaryContents,
-      config: {
-        ...(systemInstruction ? { systemInstruction } : {}),
-      },
-    });
-
-    const summary = response.text || 'Summary unavailable.';
-
-    // Replace history with compact version
-    history = [
-      {
-        role: 'user',
-        parts: [
-          {
-            text: '[Previous conversation summary]\n\n' + summary,
-          },
-        ],
-      },
-      {
-        role: 'model',
-        parts: [
-          {
-            text: 'Understood. I have the context from our previous conversation. How can I continue helping you?',
-          },
-        ],
-      },
-    ];
+    // Return a summary of what was removed
+    const summary = {
+      role: 'model',
+      parts: [
+        {
+          text: 'Understood. I have the context from our previous conversation. How can I continue helping you?',
+        },
+      ],
+    };
 
     return summary;
   }
 
   // ─── Abort ────────────────────────────────────────────────────────
 
-  /**
-   * Abort current streaming request.
-   * Sets a flag that causes the streaming loop to break on the next chunk.
-   */
   function abort() {
     _aborted = true;
   }
 
-  // ─── Send Message (Streaming) ─────────────────────────────────────
+  // ─── Send Message (Multi-Provider) ────────────────────────────────
 
   /**
-   * Send a message and stream the response via the @google/genai SDK.
+   * Send a message and stream the response via the appropriate provider.
    * @param {Object} opts
-   * @param {string} opts.apiKey
-   * @param {string} opts.model
+   * @param {string} opts.apiKey - the API key for the selected provider
+   * @param {string} opts.qwenApiKey - optional Qwen API key if different from apiKey
+  * @param {string} opts.provider - explicit provider (gemini|qwen)
+   * @param {string} opts.model - model ID (determines provider: gemini-* or qwen-*)
    * @param {string} opts.message - user message text
-   * @param {boolean} opts.enableSearch - enable Google Search grounding
-   * @param {Object} opts.thinkingConfig - thinking configuration
+   * @param {boolean} opts.enableSearch - enable search (Gemini only)
+   * @param {Object} opts.thinkingConfig - thinking configuration (Gemini only)
    * @param {string} opts.systemInstructionOverride - per-request system instruction
    * @param {function} opts.onStart - called after user message added to history
    * @param {function} opts.onChunk - called with (textDelta, fullTextSoFar)
@@ -190,6 +128,8 @@ const Chat = (() => {
    */
   async function send({
     apiKey,
+    qwenApiKey,
+    provider,
     model,
     message,
     enableSearch,
@@ -206,96 +146,90 @@ const Chat = (() => {
       parts: [{ text: message }],
     });
 
-    // Notify caller that the user message is now in history (before the network call)
     if (onStart) onStart();
 
     _aborted = false;
 
-    // Build SDK config
     const effectiveSystemInstruction =
       systemInstructionOverride ?? systemInstruction;
 
-    const tools = [];
-    if (enableSearch) {
-      tools.push({ googleSearch: {} });
-    }
-
-    const config = {
-      temperature: 1.0,
-      topP: 0.95,
-      maxOutputTokens: 8192,
-      ...(effectiveSystemInstruction
-        ? { systemInstruction: effectiveSystemInstruction }
-        : {}),
-      ...(tools.length > 0 ? { tools } : {}),
-    };
-
-    // Add thinking config if provided
-    if (thinkingConfig && thinkingConfig.enabled) {
-      config.thinkingConfig = {};
-      if (thinkingConfig.thinkingBudget != null) {
-        config.thinkingConfig.thinkingBudget = thinkingConfig.thinkingBudget;
-      }
-      if (thinkingConfig.includeThoughts) {
-        config.thinkingConfig.includeThoughts = true;
-      }
-    }
-
     let fullText = '';
-    let lastUsageMetadata = null;
-    let groundingMeta = null;
+    let metadata = {};
 
     try {
-      const ai = await getAI(apiKey);
-      const response = await ai.models.generateContentStream({
-        model,
-        contents: history,
-        config,
-      });
+      // Detect provider and route request (prefer explicit provider setting).
+      const resolvedProvider = provider || (model.startsWith('qwen') ? 'qwen' : 'gemini');
+      const providerApiKey = resolvedProvider === 'qwen' ? (qwenApiKey || apiKey) : apiKey;
 
-      for await (const chunk of response) {
-        if (_aborted) break;
+      let result;
 
-        const t = chunk.text || '';
-        if (t) {
-          fullText += t;
-          if (onChunk) onChunk(t, fullText);
-        }
+      if (resolvedProvider === 'qwen') {
+        // Convert Gemini-style history to OpenAI format
+        const messages = history.map(msg => ({
+          role: msg.role === 'model' ? 'assistant' : 'user',
+          content: msg.parts?.map(p => p.text).join('') || msg.content || '',
+        }));
 
-        // Accumulate token usage from usageMetadata (typically on last chunk)
-        if (chunk.usageMetadata) {
-          lastUsageMetadata = chunk.usageMetadata;
-        }
+        result = await ProviderAPI.Qwen.generateContent({
+          apiKey: providerApiKey,
+          model,
+          systemInstruction: effectiveSystemInstruction,
+          messages,
+          enableSearch,
+          thinkingConfig,
+          onChunk: (chunk) => {
+            if (chunk.type === 'text') {
+              fullText += chunk.text;
+              if (onChunk) onChunk(chunk.text, fullText);
+            }
+          },
+        });
 
-        // Collect grounding metadata
-        const gm = chunk.candidates?.[0]?.groundingMetadata;
-        if (gm) {
-          groundingMeta = gm;
-        }
+        metadata.usage = result.usageInfo;
+      } else {
+        // Gemini provider
+        result = await ProviderAPI.Gemini.generateContent({
+          apiKey: providerApiKey,
+          model,
+          systemInstruction: effectiveSystemInstruction,
+          messages: history,
+          onChunk: (chunk) => {
+            if (chunk.type === 'text') {
+              fullText += chunk.text;
+              if (onChunk) onChunk(chunk.text, fullText);
+            }
+          },
+          enableSearch,
+          thinkingConfig,
+        });
+
+        fullText = result.text;
+        metadata.usage = result.usageInfo;
+        metadata.grounding = result.grounding;
       }
 
-      // Update token usage from final metadata
-      if (lastUsageMetadata) {
-        tokenUsage.promptTokens +=
-          lastUsageMetadata.promptTokenCount || 0;
-        tokenUsage.candidatesTokens +=
-          lastUsageMetadata.candidatesTokenCount || 0;
-        tokenUsage.thoughtsTokens +=
-          lastUsageMetadata.thoughtsTokenCount || 0;
-        tokenUsage.totalTokens +=
-          lastUsageMetadata.totalTokenCount || 0;
+      // Update token usage
+      if (result.usageInfo) {
+        const promptTokens = result.usageInfo.promptTokens || 0;
+        const completionTokens = result.usageInfo.completionTokens || 0;
+        const totalTokens = result.usageInfo.totalTokens || 0;
+
+        tokenUsage.promptTokens += promptTokens;
+        tokenUsage.candidatesTokens += completionTokens;
+        if (resolvedProvider === 'gemini') {
+          tokenUsage.thoughtsTokens += result.usageInfo.thoughtsTokens || 0;
+        }
+        tokenUsage.totalTokens += totalTokens;
         tokenUsage.requestCount++;
       }
 
       if (_aborted) {
-        // Stream was cancelled by user
         if (fullText) {
           history.push({
             role: 'model',
             parts: [{ text: fullText + '\n\n[Response cancelled]' }],
           });
         } else {
-          // Remove the user message since we got nothing back
           history.pop();
         }
         if (onDone) onDone(fullText);
@@ -308,17 +242,10 @@ const Chat = (() => {
         parts: [{ text: fullText }],
       });
 
-      // Build metadata for the callback
-      const metadata = {
-        usage: lastUsageMetadata,
-        grounding: groundingMeta,
-      };
-
       if (onDone) onDone(fullText, metadata);
       return fullText;
     } catch (err) {
       if (_aborted) {
-        // Don't treat abort-during-error as a real error
         if (fullText) {
           history.push({
             role: 'model',
@@ -331,10 +258,10 @@ const Chat = (() => {
         return fullText;
       }
 
-      // On error, remove the user message we just added
       history.pop();
-
-      const friendlyError = new Error(buildErrorMessage(err, model));
+      
+      const resolvedProvider = provider || (model.startsWith('qwen') ? 'qwen' : 'gemini');
+      const friendlyError = new Error(buildErrorMessage(err, model, resolvedProvider));
       if (onError) onError(friendlyError);
       throw friendlyError;
     }
@@ -342,25 +269,19 @@ const Chat = (() => {
 
   // ─── Error Helpers ────────────────────────────────────────────────
 
-  /**
-   * Map SDK / HTTP errors to user-friendly messages with actionable hints.
-   */
-  function buildErrorMessage(err, model) {
-    const isPreview =
-      model.includes('preview') || model.includes('exp');
-    const status = err.status || err.httpStatusCode;
+  function buildErrorMessage(err, model, provider) {
+    const status = err.status || err.httpStatusCode || err.statusCode;
     const originalMsg = err.message || String(err);
+    const isPreview = model.includes('preview') || model.includes('exp');
 
     const hints = {
-      400: 'Bad request — the prompt or config may be invalid.',
-      401: 'Invalid API key — check your Gemini API key in Settings.',
-      403: 'Access denied — your API key may not have permission for this model.',
+      400: `Bad request — the prompt or config may be invalid.`,
+      401: `Invalid API key — check your ${provider === 'qwen' ? 'Qwen' : 'Gemini'} API key in Settings.`,
+      403: `Access denied — your API key may not have permission for this model.`,
       429: 'Rate limit exceeded — too many requests. Wait a moment and try again.',
-      500: 'Gemini server error — try again in a few seconds.',
-      503: `Gemini service unavailable (503) — the model is overloaded or temporarily down. Please try again in a moment.${
-        isPreview
-          ? ' Preview/experimental models are less stable — consider switching to a stable model (e.g. gemini-2.0-flash) in Settings.'
-          : ' You can also try switching to a different model in Settings.'
+      500: `${provider === 'qwen' ? 'Qwen' : 'Gemini'} server error — try again in a few seconds.`,
+      503: `${provider === 'qwen' ? 'Qwen' : 'Gemini'} service unavailable (503).${
+        provider === 'gemini' && isPreview ? ' Preview models are less stable — consider switching to a stable model.' : ''
       }`,
     };
 
@@ -370,17 +291,21 @@ const Chat = (() => {
 
   // ─── Test API Key ─────────────────────────────────────────────────
 
-  /**
-   * Test if an API key is valid by making a small request.
-   */
-  async function testApiKey(apiKey, model) {
-    const ai = await getAI(apiKey);
-    await ai.models.generateContent({
-      model,
-      contents: 'Hi',
-      config: { maxOutputTokens: 5 },
-    });
-    return true;
+  async function testApiKey(apiKey, model, qwenApiKey = null) {
+    if (!model) return false;
+
+    const provider = model.startsWith('qwen') ? 'qwen' : 'gemini';
+    const providerApiKey = provider === 'qwen' ? (qwenApiKey || apiKey) : apiKey;
+
+    try {
+      if (provider === 'qwen') {
+        return await ProviderAPI.Qwen.testApiKey(providerApiKey, model);
+      } else {
+        return await ProviderAPI.Gemini.testApiKey(providerApiKey, model);
+      }
+    } catch (e) {
+      return false;
+    }
   }
 
   // ─── Public API ───────────────────────────────────────────────────

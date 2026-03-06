@@ -37,6 +37,7 @@
         <span class="token-icon">🪙</span>
         <span id="token-count">0 tokens</span>
       </div>
+      <button id="settings-btn" title="Settings">⚙</button>
     </header>
 
     <!-- Chat Messages -->
@@ -74,24 +75,48 @@
       <div class="settings-group-title">AI Configuration</div>
 
       <div class="settings-field">
-        <label for="set-api-key">Gemini API Key</label>
-        <div class="password-input-group">
-          <input type="password" id="set-api-key" placeholder="AIza..." autocomplete="off" />
-          <button type="button" class="password-toggle" data-for="set-api-key" title="Show/hide">👁</button>
-        </div>
-        <div class="hint">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">aistudio.google.com</a></div>
+        <label for="set-provider">AI Provider</label>
+        <select id="set-provider">
+          <option value="">-- Select Provider --</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="qwen">Qwen (via DashScope)</option>
+        </select>
+        <div class="hint">Choose your preferred AI model provider</div>
       </div>
 
       <div class="settings-field">
-        <label for="set-model">Model</label>
-        <input type="text" id="set-model" placeholder="e.g. gemini-2.5-flash-preview-05-20" />
-        <div class="hint">Enter the Gemini model ID you want to use</div>
+        <label for="set-model">AI Model</label>
+        <input type="text" id="set-model" placeholder="e.g., gemini-2.5-flash or qwen-turbo" />
+        <div class="hint">Enter the model ID (e.g., gemini-2.5-flash, qwen-turbo, qwen-max)</div>
+        <div class="hint" id="model-capability-hint"></div>
+      </div>
+
+      <div id="gemini-fields">
+        <div class="settings-field">
+          <label for="set-api-key">Gemini API Key</label>
+          <div class="password-input-group">
+            <input type="password" id="set-api-key" placeholder="AIza..." autocomplete="off" />
+            <button type="button" class="password-toggle" data-for="set-api-key" title="Show/hide">👁</button>
+          </div>
+          <div class="hint">Required when using Google Gemini models</div>
+        </div>
+      </div>
+
+      <div id="qwen-fields" class="hidden">
+        <div class="settings-field">
+          <label for="set-qwen-api-key">Qwen API Key</label>
+          <div class="password-input-group">
+            <input type="password" id="set-qwen-api-key" placeholder="sk-..." autocomplete="off" />
+            <button type="button" class="password-toggle" data-for="set-qwen-api-key" title="Show/hide">👁</button>
+          </div>
+          <div class="hint">DashScope key for Qwen models</div>
+        </div>
       </div>
 
       <div class="settings-field">
         <label class="toggle-label">
           <input type="checkbox" id="set-enable-search" />
-          <span>Enable Google Search (Grounding)</span>
+          <span>Enable Search Grounding</span>
         </label>
         <div class="hint">Let the model search the web for up-to-date information</div>
       </div>

@@ -4,7 +4,7 @@
 
 A fully **browser-based AI assistant** with customizable SOUL personality, pluggable Skills, and seamless session management. Run AI workflows directly in your browser with encrypted session storage.
 
-> **Powered by Google Gemini API** | **Works offline after initial load** | **Zero server backend required**
+> **Powered by Google Gemini + Qwen APIs** | **Works offline after initial load** | **Zero server backend required**
 
 🚀 **[Try it now](https://masteraux101.github.io/boxed-agent/main.html)** — No installation required!
 
@@ -61,7 +61,8 @@ Visit **[https://masteraux101.github.io/boxed-agent/main.html](https://masteraux
 ### Local Development
 
 - Node.js 18+ (for development only; app runs in browser)
-- Google Gemini API key ([get one free](https://ai.google.dev))
+- Google Gemini API key (optional, [get one free](https://ai.google.dev))
+- Qwen API key (optional, from DashScope/Bailian)
 - Optional: GitHub PAT for cloud storage
 
 ### Installation
@@ -88,9 +89,10 @@ Visit **[https://masteraux101.github.io/boxed-agent/main.html](https://masteraux
 ### First Use
 
 1. Open the app in your browser
-2. Enter your **Google Gemini API key** in settings
-3. Select a SOUL or create a custom one
-4. Start chatting!
+2. Choose provider: **Gemini** or **Qwen**
+3. Enter corresponding API key in settings
+4. Select a SOUL or create a custom one
+5. Start chatting!
 
 ---
 
@@ -104,7 +106,8 @@ Session {
   soulName: string                         # which personality to use
   messages: Array<{ role, content }>       # chat history (encrypted)
   settings: {
-    apiKey, model, enableSearch, ...       # per-session config (encrypted)
+    apiKey, qwenApiKey, provider, model,
+    enableSearch, enableThinking, ...       # per-session config (encrypted)
   }
   backend: "local" | "github" | "notion"   # storage location
 }
@@ -147,16 +150,17 @@ This combined prompt is sent to the model for each message.
 
 ### Global Settings
 Stored in `localStorage` under `browseragent_settings` (plaintext):
-- Default API key
-- Default model (gemini-pro, etc.)
+- Default provider
+- Default API keys (Gemini/Qwen)
+- Default model (gemini-*, qwen-*, etc.)
 - CORS proxy URL
 - Default storage backend
 
 ### Per-Session Settings
 Stored in `localStorage` under `browseragent_session_cfg_<sessionId>` (encrypted):
-- Session-specific API key override
+- Session-specific provider and API key override
 - Model selection
-- Search/thinking enablement
+- Search/thinking enablement (dynamic by model capability)
 - Storage backend (GitHub, Notion, etc.)
 
 ### Environment Variables (Development)
@@ -171,14 +175,15 @@ VITE_API_ENDPOINT=https://api.google.dev  # or your proxy
 ## 🔗 API Integration
 
 ### Google Gemini
-```javascript
-// Configured in app.js
-const response = await fetch('https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent', {
-  method: 'POST',
-  headers: { 'x-goog-api-key': apiKey, ... },
-  body: JSON.stringify({ contents: [ ... ] })
-});
-```
+- Uses `@google/genai` SDK (`models.generateContentStream`)
+- Supports model-based search/thinking options
+
+### Qwen (DashScope OpenAI-compatible)
+- Uses DashScope compatible endpoint:
+  - `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`
+- Uses streaming (`SSE`) and token usage parsing
+- Supports model-based capability switching:
+  - search and thinking are enabled/disabled per model dimensions
 
 ### GitHub API
 ```javascript
@@ -277,6 +282,7 @@ Edit `src/storage.js`:
 | Package | Purpose |
 |---------|---------|
 | `@google/genai` | Google Gemini API client |
+| `openai` | OpenAI-compatible client utilities (Qwen ecosystem) |
 | `@langchain/langgraph` | Multi-agent workflow orchestration |
 | `@browserbasehq/stagehand` | Browser automation (optional) |
 | `tweetnacl` | Encryption utils (optional) |
@@ -301,6 +307,8 @@ If you need to proxy Gemini requests for privacy/rate-limiting:
 1. Deploy a reverse proxy (e.g., Cloudflare Workers)
 2. Set `VITE_API_ENDPOINT` environment variable
 3. Redeploy
+
+For Qwen/DashScope, make sure your network can access Aliyun endpoints and your account quota is sufficient.
 
 ### GitHub Pages Example
 ```bash
@@ -329,6 +337,11 @@ git subtree push --prefix dist origin gh-pages
 - Verify `CORS_PROXY` setting in global/session config
 - Some APIs don't support CORS; use proxy or backend
 
+### Qwen 403 / free tier exhausted
+- Your key is valid but model quota/billing is exhausted
+- Switch to a billed model or recharge your DashScope/Bailian account
+- Try setting a specific model in `.env`: `QWEN_MODEL=qwen3-max-2026-01-23`
+
 ### Skills not showing up
 - Verify markdown format (## Heading)
 - Check console for load errors
@@ -354,6 +367,7 @@ Contributions welcome! Please:
 ## 📚 Resources
 
 - [Google Gemini API Docs](https://ai.google.dev)
+- [Qwen / DashScope Docs](https://help.aliyun.com/zh/model-studio/)
 - [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
 - [GitHub API Docs](https://docs.github.com/en/rest)
 - [LangGraph Docs](https://python.langchain.com/docs/langgraph)
