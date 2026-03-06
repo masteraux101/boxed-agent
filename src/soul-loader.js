@@ -56,10 +56,25 @@ const SoulLoader = (() => {
 
   /**
    * Fetch raw text from a URL (GitHub raw, generic, etc.)
+   * @param {string} url - The URL to fetch
+   * @param {string} [corsProxy] - Optional CORS proxy URL (defaults to corsproxy.io)
    */
-  async function fetchRawText(url) {
+  async function fetchRawText(url, corsProxy) {
     const resolved = toRawGitHubUrl(url.trim());
-    const resp = await fetch(resolved);
+    
+    try {
+      // Try direct fetch first (works for same-origin or CORS-enabled)
+      const resp = await fetch(resolved);
+      if (resp.ok) return resp.text();
+      // If CORS error, fallthrough to proxy
+    } catch (e) {
+      // Network error or CORS error, will try proxy below
+    }
+    
+    // If direct didn't work, use CORS proxy
+    const proxy = corsProxy || DEFAULT_CORS_PROXY;
+    const proxiedUrl = proxy + encodeURIComponent(resolved);
+    const resp = await fetch(proxiedUrl);
     if (!resp.ok)
       throw new Error(`Failed to fetch ${resolved}: ${resp.status}`);
     return resp.text();
@@ -219,7 +234,7 @@ const SoulLoader = (() => {
           corsProxy
         );
       } else {
-        soulContent = await fetchRawText(soulUrl);
+        soulContent = await fetchRawText(soulUrl, corsProxy);
       }
       soulName = extractSoulName(soulContent);
     }
@@ -234,7 +249,7 @@ const SoulLoader = (() => {
           if (source === 'notion-page') {
             raw = await fetchNotionContent(url, notionToken, corsProxy);
           } else {
-            raw = await fetchRawText(url);
+            raw = await fetchRawText(url, corsProxy);
           }
           return parseSkillFile(raw);
         })

@@ -1000,27 +1000,40 @@ const App = (() => {
       return true;
     }
 
-    // Handle /soul <name> to switch SOUL
+    // Handle /soul <name-or-url> to switch SOUL
     if (text.trim().toLowerCase().startsWith('/soul ')) {
-      const soulName = text.trim().slice(6).trim();
+      const soulInput = text.trim().slice(6).trim();
       addMessageBubble('user', text.trim());
       
-      const soul = BUILTIN_SOULS.find(s => 
-        s.name.toLowerCase() === soulName.toLowerCase()
-      );
+      let soulUrl = null;
+      let displayName = soulInput;
       
-      if (!soul) {
-        addMessageBubble('model', `❌ SOUL not found: "${soulName}". Available: ${BUILTIN_SOULS.map(s => s.name).join(', ')}`);
-        return true;
+      // Check if input is a URL
+      if (soulInput.startsWith('http://') || soulInput.startsWith('https://')) {
+        soulUrl = soulInput;
+        displayName = soulInput.split('/').pop() || 'SOUL';
+      } else {
+        // Try to find in built-ins
+        const soul = BUILTIN_SOULS.find(s => 
+          s.name.toLowerCase() === soulInput.toLowerCase()
+        );
+        
+        if (!soul) {
+          addMessageBubble('model', `❌ SOUL not found: "${soulInput}". Available: ${BUILTIN_SOULS.map(s => s.name).join(', ')}\n\nOr provide a full URL: \`/soul <github-raw-url>\``);
+          return true;
+        }
+        
+        soulUrl = soul.url;
+        displayName = soul.name;
       }
       
       (async () => {
         try {
-          const bubble = addMessageBubble('model', `⏳ Loading SOUL: **${soulName}**…`);
+          const bubble = addMessageBubble('model', `⏳ Loading SOUL: **${displayName}**…`);
           
           // Update session config with new soul URL
           const cfg = getSessionConfig(currentSessionId);
-          cfg.soulUrl = soul.url;
+          cfg.soulUrl = soulUrl;
           saveSessionConfig(currentSessionId, cfg);
           
           // Load the new soul
@@ -1044,27 +1057,40 @@ const App = (() => {
       return true;
     }
 
-    // Handle /skill <name> to load a skill
+    // Handle /skill <name-or-url> to load a skill
     if (text.trim().toLowerCase().startsWith('/skill ')) {
-      const skillName = text.trim().slice(7).trim();
+      const skillInput = text.trim().slice(7).trim();
       addMessageBubble('user', text.trim());
       
-      const skill = BUILTIN_SKILLS.find(s => 
-        s.name.toLowerCase() === skillName.toLowerCase() ||
-        s.url.toLowerCase().includes(skillName.toLowerCase())
-      );
+      let skillUrl = null;
+      let displayName = skillInput;
       
-      if (!skill) {
-        const available = BUILTIN_SKILLS.map(s => s.name).join(', ');
-        addMessageBubble('model', `❌ Skill not found: "${skillName}". Available: ${available}`);
-        return true;
+      // Check if input is a URL
+      if (skillInput.startsWith('http://') || skillInput.startsWith('https://')) {
+        skillUrl = skillInput;
+        displayName = skillInput.split('/').pop() || 'SKILL';
+      } else {
+        // Try to find in built-ins
+        const skill = BUILTIN_SKILLS.find(s => 
+          s.name.toLowerCase() === skillInput.toLowerCase() ||
+          s.url.toLowerCase().includes(skillInput.toLowerCase())
+        );
+        
+        if (!skill) {
+          const available = BUILTIN_SKILLS.map(s => s.name).join(', ');
+          addMessageBubble('model', `❌ Skill not found: "${skillInput}". Available: ${available}\n\nOr provide a full URL: \`/skill <github-raw-url>\``);
+          return true;
+        }
+        
+        skillUrl = skill.url;
+        displayName = skill.name;
       }
       
       (async () => {
         try {
-          const bubble = addMessageBubble('model', `⏳ Loading skill: **${skill.name}**…`);
-          const parsed = await loadSkillFromUrl(skill.url);
-          bubble.innerHTML = renderMarkdown(`✅ Loaded skill: **${parsed.meta?.name || skill.name}**\n\n${parsed.meta?.description || ''}`);
+          const bubble = addMessageBubble('model', `⏳ Loading skill: **${displayName}**…`);
+          const parsed = await loadSkillFromUrl(skillUrl);
+          bubble.innerHTML = renderMarkdown(`✅ Loaded skill: **${parsed.meta?.name || displayName}**\n\n${parsed.meta?.description || ''}`);
         } catch (err) {
           addMessageBubble('model', `❌ Failed to load skill: ${err.message}`);
         }
@@ -3025,7 +3051,8 @@ const App = (() => {
    * Stores the source URL on the parsed object for later identity checks.
    */
   async function loadSkillFromUrl(url) {
-    const raw = await SoulLoader.fetchRawText(url);
+    const corsProxy = getSessionSetting('corsProxy');
+    const raw = await SoulLoader.fetchRawText(url, corsProxy);
     const parsed = SoulLoader.parseSkillFile(raw);
     parsed.url = url;
     if (!loadedSkills.find(s => s.url === url)) {
