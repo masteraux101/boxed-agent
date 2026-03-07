@@ -1563,7 +1563,7 @@ const App = (() => {
 
     // Passphrase field: only show for new sessions (first-time config)
     const ppField = $('#set-passphrase');
-    const ppGroup = ppField?.closest('.settings-field');
+    const ppGroup = $('#passphrase-field-top') || ppField?.closest('.settings-field');
     if (ppGroup) {
       if (isNew) {
         show(ppGroup);
@@ -1679,7 +1679,7 @@ const App = (() => {
     const selectedProvider = $('#set-provider').value || inferProviderFromModel($('#set-model').value.trim());
     let selectedModel = $('#set-model').value.trim();
     if (!selectedModel) {
-      selectedModel = selectedProvider === 'qwen' ? 'qwen-turbo' : 'gemini-2.5-flash';
+      selectedModel = selectedProvider === 'qwen' ? 'qwen3-max-2026-01-23' : 'gemini-2.5-flash';
     }
     cfg.provider = selectedProvider;
     cfg.model = selectedModel;
@@ -1829,17 +1829,24 @@ const App = (() => {
     const geminiFields = $('#gemini-fields');
     const qwenFields = $('#qwen-fields');
     const modelInput = $('#set-model');
+    const currentModel = (modelInput?.value || '').trim().toLowerCase();
+    const hasModel = !!currentModel;
+    const looksGemini = currentModel.startsWith('gemini-');
+    const looksQwen = currentModel.startsWith('qwen') || currentModel.startsWith('qwq-');
+    const shouldUseProviderDefault = !hasModel ||
+      (provider === 'qwen' && looksGemini) ||
+      (provider === 'gemini' && looksQwen);
 
     if (provider === 'qwen') {
       show(qwenFields);
       hide(geminiFields);
-      if (modelInput && !modelInput.value.trim()) {
-        modelInput.value = 'qwen-turbo';
+      if (modelInput && shouldUseProviderDefault) {
+        modelInput.value = 'qwen3-max-2026-01-23';
       }
     } else {
       show(geminiFields);
       hide(qwenFields);
-      if (modelInput && !modelInput.value.trim()) {
+      if (modelInput && shouldUseProviderDefault) {
         modelInput.value = 'gemini-2.5-flash';
       }
     }
