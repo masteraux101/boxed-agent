@@ -78,43 +78,7 @@ const App = (() => {
     };
   }
 
-  // Built-in SOUL files — loaded dynamically from examples/souls/index.json
-  let BUILTIN_SOULS = [];
-  let _soulsLoaded = false;
-
-  async function loadBuiltinSouls() {
-    if (_soulsLoaded) return;
-    try {
-      const resp = await fetch('./examples/souls/index.json?_=' + Date.now());
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const list = await resp.json();
-      // Pre-fetch each soul file so we don't need a second round-trip later
-      const entries = await Promise.all(list.map(async entry => {
-        const url = `./examples/souls/${entry.file}`;
-        try {
-          const r = await fetch(url);
-          const content = r.ok ? await r.text() : '';
-          return { name: entry.name, url, content };
-        } catch {
-          return { name: entry.name, url, content: '' };
-        }
-      }));
-      BUILTIN_SOULS = entries;
-      _soulsLoaded = true;
-    } catch (e) {
-      console.warn('[Souls] Failed to load souls index:', e);
-      BUILTIN_SOULS = [];
-    }
-  }
-
-  // Built-in skills bundled with the project (not auto-loaded; managed via /skills)
-  const BUILTIN_SKILLS = [
-    { name: 'AI Prompt Scheduler', desc: 'Schedule AI prompts and deploy them to GitHub Actions', url: './examples/skills/ai-prompt-scheduler.md' },
-    { name: 'Code Review',         desc: 'Systematic code review with actionable feedback',        url: './examples/skills/code-review.md' },
-    { name: 'Email (Resend)',       desc: 'Send email notifications via the Resend API',            url: './examples/skills/email-resend.md' },
-    { name: 'GitHub Scheduler',    desc: 'Set up scheduled GitHub Actions workflows',               url: './examples/skills/github-scheduler.md' },
-    { name: 'Translator',          desc: 'Multi-language translation assistant',                    url: './examples/skills/translator.md' },
-  ];
+  // SOUL/Skills are loaded by user-provided URLs only.
 
   function getSettings() {
     try {
@@ -189,8 +153,6 @@ const App = (() => {
         cfg[key] = val;
       }
     }
-    // Auto-load ai-prompt-scheduler skill for every new session
-    cfg.skillUrls = ['./examples/skills/ai-prompt-scheduler.md'];
     saveSessionConfig(sessionId, cfg);
   }
 
@@ -751,7 +713,7 @@ const App = (() => {
       <div class="welcome-screen">
         <div class="welcome-logo">🧠</div>
         <h2>BrowserAgent</h2>
-        <p>A fully browser-based AI workbench powered by the Gemini API.</p>
+        <p>A fully browser-based AI workbench for Gemini, Qwen, and other compatible providers.</p>
         <div class="landing-features">
           <div class="landing-feature">
             <strong>🔒 Private & Secure</strong>
@@ -767,7 +729,7 @@ const App = (() => {
           </div>
           <div class="landing-feature">
             <strong>🔍 Grounding & Thinking</strong>
-            <span>Google Search grounding and thinking mode for deeper reasoning.</span>
+            <span>Provider-aware search grounding and thinking mode for deeper reasoning.</span>
           </div>
           <div class="landing-feature">
             <strong>⚡ GitHub Actions</strong>
@@ -785,7 +747,7 @@ const App = (() => {
       <div class="welcome-screen">
         <div class="welcome-logo">🧠</div>
         <h2>BrowserAgent</h2>
-        <p>Your personal AI assistant, fully in-browser.</p>
+        <p>Your personal multi-provider AI assistant, fully in-browser.</p>
         <div class="welcome-status">
           <span id="soul-status" class="status-badge">No SOUL loaded</span>
           <span id="skill-status" class="status-badge">0 Skills</span>
@@ -870,7 +832,7 @@ const App = (() => {
     { cmd: '/github status', desc: '列出仓库、所有 Workflow 及正在运行的任务' },
     { cmd: '/github run',    desc: '立刻触发（workflow_dispatch）指定的 Workflow' },
     { cmd: '/github delete', desc: '删除指定的 Workflow 文件' },
-    { cmd: '/skills',        desc: 'Manage skills: load/unload built-in or custom skills' },
+    { cmd: '/skills',        desc: 'Manage custom skills (URL load/unload)' },
     { cmd: '/soul',          desc: '显示当前 SOUL 名称和 URL' },
     { cmd: '/compact',       desc: '压缩对话历史，生成摘要以释放上下文' },
     { cmd: '/clear',         desc: '清空当前会话的所有消息（含存储）' },
@@ -1036,27 +998,13 @@ const App = (() => {
       const soulInput = text.trim().slice(6).trim();
       addMessageBubble('user', text.trim());
       
-      let soulUrl = null;
-      let displayName = soulInput;
-      
-      // Check if input is a URL
-      if (soulInput.startsWith('http://') || soulInput.startsWith('https://')) {
-        soulUrl = soulInput;
-        displayName = soulInput.split('/').pop() || 'SOUL';
-      } else {
-        // Try to find in built-ins
-        const soul = BUILTIN_SOULS.find(s => 
-          s.name.toLowerCase() === soulInput.toLowerCase()
-        );
-        
-        if (!soul) {
-          addMessageBubble('model', `❌ SOUL not found: "${soulInput}". Available: ${BUILTIN_SOULS.map(s => s.name).join(', ')}\n\nOr provide a full URL: \`/soul <github-raw-url>\``);
-          return true;
-        }
-        
-        soulUrl = soul.url;
-        displayName = soul.name;
+      if (!soulInput.startsWith('http://') && !soulInput.startsWith('https://')) {
+        addMessageBubble('model', '❌ Please provide a SOUL URL. Example: `/soul https://raw.githubusercontent.com/you/repo/main/SOUL.md`');
+        return true;
       }
+
+      const soulUrl = soulInput;
+      const displayName = soulInput.split('/').pop() || 'SOUL';
       
       (async () => {
         try {
@@ -1093,29 +1041,13 @@ const App = (() => {
       const skillInput = text.trim().slice(7).trim();
       addMessageBubble('user', text.trim());
       
-      let skillUrl = null;
-      let displayName = skillInput;
-      
-      // Check if input is a URL
-      if (skillInput.startsWith('http://') || skillInput.startsWith('https://')) {
-        skillUrl = skillInput;
-        displayName = skillInput.split('/').pop() || 'SKILL';
-      } else {
-        // Try to find in built-ins
-        const skill = BUILTIN_SKILLS.find(s => 
-          s.name.toLowerCase() === skillInput.toLowerCase() ||
-          s.url.toLowerCase().includes(skillInput.toLowerCase())
-        );
-        
-        if (!skill) {
-          const available = BUILTIN_SKILLS.map(s => s.name).join(', ');
-          addMessageBubble('model', `❌ Skill not found: "${skillInput}". Available: ${available}\n\nOr provide a full URL: \`/skill <github-raw-url>\``);
-          return true;
-        }
-        
-        skillUrl = skill.url;
-        displayName = skill.name;
+      if (!skillInput.startsWith('http://') && !skillInput.startsWith('https://')) {
+        addMessageBubble('model', '❌ Please provide a Skill URL. Example: `/skill https://raw.githubusercontent.com/you/repo/main/my-skill.md`');
+        return true;
       }
+
+      const skillUrl = skillInput;
+      const displayName = skillInput.split('/').pop() || 'SKILL';
       
       (async () => {
         try {
@@ -1135,24 +1067,8 @@ const App = (() => {
       const bubble = addMessageBubble('model', '');
 
       const renderSkillPanel = () => {
-        const builtinRows = BUILTIN_SKILLS.map(bs => {
-          const isLoaded = !!loadedSkills.find(s => s.url === bs.url);
-          return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">
-            <div style="flex:1;">
-              <span style="font-weight:600;font-size:13px;">${escapeHtml(bs.name)}</span>
-              <div style="font-size:12px;opacity:.7;">${escapeHtml(bs.desc)}</div>
-            </div>
-            <button class="gh-skill-toggle-btn" data-url="${escapeHtml(bs.url)}" data-loaded="${isLoaded ? '1' : '0'}"
-              style="background:${isLoaded ? '#555' : 'var(--accent)'};color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;min-width:58px;">
-              ${isLoaded ? 'Unload' : 'Load'}
-            </button>
-          </div>`;
-        }).join('');
-
-        const customLoaded = loadedSkills.filter(s => !BUILTIN_SKILLS.find(b => b.url === s.url));
-        const customSection = customLoaded.length ? `
-          <div style="font-weight:600;margin:12px 0 6px;font-size:13px;">🌐 Custom Skills</div>
-          ${customLoaded.map(s => `
+        const loadedRows = loadedSkills.length
+          ? loadedSkills.map(s => `
             <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">
               <div style="flex:1;font-size:12px;">
                 <span style="font-weight:600;">${escapeHtml(s.meta?.name || 'Unnamed')}</span>
@@ -1163,16 +1079,15 @@ const App = (() => {
                 Unload
               </button>
             </div>
-          `).join('')}
-        ` : '';
+          `).join('')
+          : '<div style="padding:8px 0;font-size:12px;opacity:.7;">No skills loaded yet.</div>';
 
         return `
           <div style="font-weight:600;margin-bottom:10px;font-size:14px;">🧩 Skill Manager</div>
-          <div style="font-weight:600;margin-bottom:6px;font-size:12px;text-transform:uppercase;opacity:.6;letter-spacing:.05em;">📦 Built-in Skills</div>
-          ${builtinRows}
-          ${customSection}
+          <div style="font-size:12px;opacity:.7;margin-bottom:8px;">Load skills from your own URL source.</div>
+          ${loadedRows}
           <div style="margin-top:12px;display:flex;gap:6px;align-items:center;">
-            <input id="skill-add-url" type="url" placeholder="Add custom skill URL…"
+            <input id="skill-add-url" type="url" placeholder="Add skill URL…"
               style="flex:1;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,#1e1e1e);color:inherit;font-size:12px;" />
             <button id="skill-add-btn"
               style="background:var(--accent);color:#fff;border:none;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;">
@@ -1185,31 +1100,6 @@ const App = (() => {
       bubble.innerHTML = renderSkillPanel();
 
       const wireButtons = () => {
-        bubble.querySelectorAll('.gh-skill-toggle-btn').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const url = btn.dataset.url;
-            if (btn.dataset.loaded === '1') {
-              unloadSkill(url);
-              bubble.innerHTML = renderSkillPanel();
-              wireButtons();
-              showToast('Skill unloaded', 'info');
-            } else {
-              btn.disabled = true;
-              btn.textContent = 'Loading...';
-              try {
-                const parsed = await loadSkillFromUrl(url);
-                bubble.innerHTML = renderSkillPanel();
-                wireButtons();
-                showToast(`"${parsed.meta.name}" loaded`, 'success');
-              } catch (e) {
-                btn.disabled = false;
-                btn.textContent = 'Load';
-                showToast(`Load failed: ${e.message}`, 'error');
-              }
-            }
-          });
-        });
-
         bubble.querySelectorAll('.gh-skill-unload-btn').forEach(btn => {
           btn.addEventListener('click', () => {
             unloadSkill(btn.dataset.url);
@@ -1707,18 +1597,10 @@ const App = (() => {
     $('#set-enable-thinking').checked = get('enableThinking', false);
     $('#set-thinking-budget').value = get('thinkingBudget', '');
     $('#set-include-thoughts').checked = get('includeThoughts', false);
-    // Ensure built-in souls are loaded before populating the picker
-    await loadBuiltinSouls();
-
-    // Soul picker — populate built-ins then restore saved value
-    populateSoulPicker();
+    // Soul picker uses manual URL mode only.
     const savedSoulUrl = get('soulUrl', '');
-    const isBuiltinSoul = BUILTIN_SOULS.some(s => s.url === savedSoulUrl);
     if (!savedSoulUrl) {
       $('#set-soul-preset').value = '';
-      $('#set-soul-url').value = '';
-    } else if (isBuiltinSoul) {
-      $('#set-soul-preset').value = savedSoulUrl;
       $('#set-soul-url').value = '';
     } else {
       $('#set-soul-preset').value = '__custom__';
@@ -1917,23 +1799,6 @@ const App = (() => {
       activateSession(sessionId, cfg.passphrase);
     } else if (sessionId === currentSessionId) {
       loadSoulAndSkills();
-    }
-  }
-
-  function populateSoulPicker() {
-    const sel = $('#set-soul-preset');
-    if (!sel) return;
-    // Remove any previously injected built-in options (keep "None" and "Custom URL")
-    for (const opt of Array.from(sel.options)) {
-      if (opt.value !== '' && opt.value !== '__custom__') opt.remove();
-    }
-    // Insert built-in entries before the "Custom URL" option
-    const customOpt = sel.querySelector('option[value="__custom__"]');
-    for (const soul of BUILTIN_SOULS) {
-      const opt = document.createElement('option');
-      opt.value = soul.url;
-      opt.textContent = soul.name;
-      sel.insertBefore(opt, customOpt);
     }
   }
 
@@ -3019,9 +2884,6 @@ const App = (() => {
   }
 
   async function loadSoulAndSkills() {
-    // Ensure built-in souls cache is ready
-    await loadBuiltinSouls();
-
     const soulUrl = getSessionSetting('soulUrl');
 
     if (!soulUrl) {
@@ -3035,16 +2897,6 @@ const App = (() => {
     try {
       showToast('Loading SOUL…', 'info');
 
-      // Check if this is a pre-loaded built-in soul (use cached content, no extra fetch)
-      const builtin = BUILTIN_SOULS.find(s => s.url === soulUrl);
-      if (builtin && builtin.content) {
-        soulOnlyInstruction = `=== SOUL ===\n\n${builtin.content}`;
-        currentSoulName = SoulLoader.extractSoulName(builtin.content);
-        applySkillsToInstruction();
-        await restoreSessionSkills();
-        showToast(`Loaded: ${currentSoulName} + ${loadedSkillCount} skill(s)`, 'success');
-        return;
-      }
       const result = await SoulLoader.load({
         soulUrl,
         skillUrls: [], // Skills are managed at runtime via /skills
@@ -3499,9 +3351,6 @@ const App = (() => {
     });
 
     $('#set-soul-preset')?.addEventListener('change', toggleSoulUrlField);
-
-    // Load built-in SOUL list, then render sidebar
-    loadBuiltinSouls();
 
     // No session on startup — show landing, disable input
     showLanding();
